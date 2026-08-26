@@ -19,8 +19,8 @@ class SimoroSyncService
 
     public function __construct()
     {
-        $this->baseUrl = env('SIMORO_API_URL', 'https://simoro.sma-n5-morotai.id/api');
-        $this->token = env('SIMORO_API_TOKEN');
+        $this->baseUrl = config('services.simoro.url', 'https://simoro.sma-n5-morotai.id/api');
+        $this->token = config('services.simoro.token');
     }
 
     protected function getClient()

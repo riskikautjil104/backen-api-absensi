@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'simoro' => [
+        'url' => env('SIMORO_API_URL', 'https://simoro.sma-n5-morotai.id/api'),
+        'token' => env('SIMORO_API_TOKEN'),
+    ],
+
 ];

@@ -50,7 +50,7 @@ class LoginRequest extends FormRequest
 
         // Try SIMORO API SSO
         try {
-            $apiUrl = env('SIMORO_API_URL', 'https://simoro.sma-n5-morotai.id/api');
+            $apiUrl = config('services.simoro.url', 'https://simoro.sma-n5-morotai.id/api');
             $response = null;
 
             if (filter_var($loginValue, FILTER_VALIDATE_EMAIL)) {
