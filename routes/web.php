@@ -27,10 +27,15 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('/kartu/cek', [App\Http\Controllers\Admin\KartuController::class, 'index'])->name('kartu.index');
     Route::post('/kartu/cek', [App\Http\Controllers\Admin\KartuController::class, 'check'])->name('kartu.check');
 
+    // Sync SIMORO
+    Route::post('/sync/all', [App\Http\Controllers\Admin\SyncController::class, 'syncAll'])->name('sync.all');
+    Route::post('/sync/{type}', [App\Http\Controllers\Admin\SyncController::class, 'syncSingle'])->name('sync.single');
+
     Route::resource('guru', App\Http\Controllers\Admin\GuruController::class);
     Route::resource('siswa', App\Http\Controllers\Admin\SiswaController::class);
     Route::resource('kelas', App\Http\Controllers\Admin\KelasController::class);
     Route::resource('mapel', App\Http\Controllers\Admin\MapelController::class);
+    Route::get('/jadwal/guru-relations/{guru_id}', [App\Http\Controllers\Admin\JadwalController::class, 'getGuruRelations'])->name('jadwal.guru-relations');
     Route::resource('jadwal', App\Http\Controllers\Admin\JadwalController::class);
     Route::resource('buku', App\Http\Controllers\Admin\BukuController::class);
 });

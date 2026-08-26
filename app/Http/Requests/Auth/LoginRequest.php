@@ -48,71 +48,143 @@ class LoginRequest extends FormRequest
         $authenticated = false;
         $localUser = null;
 
-        // Try API SSO for Siswa first
+        // Try SIMORO API SSO
         try {
-            $apiUrl = env('SIMORO_API_URL', 'http://localhost:8000/api');
-            $response = \Illuminate\Support\Facades\Http::timeout(5)->post($apiUrl . '/siswa/login', [
-                'login' => $loginValue,
-                'email' => $loginValue,
-                'password' => $password,
-            ]);
+            $apiUrl = env('SIMORO_API_URL', 'https://simoro.sma-n5-morotai.id/api');
+            $response = null;
 
-            if ($response->successful() && $response->json('success')) {
-                $apiData = $response->json('data');
-                $apiUser = $apiData['user'];
+            if (filter_var($loginValue, FILTER_VALIDATE_EMAIL)) {
+                // It is an email, try general login API (admin/teacher/student)
+                $response = \Illuminate\Support\Facades\Http::timeout(5)->post($apiUrl . '/login', [
+                    'email' => $loginValue,
+                    'password' => $password,
+                ]);
 
-                // 1. Sync Kelas
-                $kelasName = $apiUser['class_name'] ?? 'Umum';
-                $kelas = \App\Models\Kelas::firstOrCreate(
-                    ['nama_kelas' => $kelasName],
-                    ['tahun_ajaran' => $apiUser['angkatan'] ?? '2025/2026']
-                );
+                if ($response->successful() && $response->json('user')) {
+                    $apiUser = $response->json('user');
+                    $role = $apiUser['role'] ?? 'student';
 
-                // 2. Sync User
-                $localUser = \App\Models\User::where('email', $apiUser['email'])
-                    ->orWhere('nis', $apiUser['nis'])
-                    ->first();
+                    // Normalize role string
+                    if ($role === 'teacher') $role = 'guru';
+                    elseif ($role === 'student') $role = 'siswa';
 
-                if (!$localUser) {
-                    $localUser = \App\Models\User::create([
-                        'name' => $apiUser['name'],
-                        'email' => $apiUser['email'],
-                        'nis' => $apiUser['nis'],
-                        'role' => 'siswa',
-                        'password' => \Illuminate\Support\Facades\Hash::make($password),
-                    ]);
-                } else {
-                    $localUser->update([
-                        'name' => $apiUser['name'],
-                        'email' => $apiUser['email'],
-                        'nis' => $apiUser['nis'],
-                        'password' => \Illuminate\Support\Facades\Hash::make($password),
-                    ]);
+                    // Sync the User
+                    $nip = $apiUser['nip'] ?? null;
+                    $nis = $apiUser['nis'] ?? null;
+                    
+                    $userQuery = \App\Models\User::where('email', $apiUser['email']);
+                    if ($nip) $userQuery = $userQuery->orWhere('nip', $nip);
+                    if ($nis) $userQuery = $userQuery->orWhere('nis', $nis);
+                    $localUser = $userQuery->first();
+
+                    if (!$localUser) {
+                        $localUser = \App\Models\User::create([
+                            'name' => $apiUser['name'],
+                            'email' => $apiUser['email'],
+                            'nip' => $nip,
+                            'nis' => $nis,
+                            'role' => $role,
+                            'password' => \Illuminate\Support\Facades\Hash::make($password),
+                        ]);
+                    } else {
+                        $localUser->update([
+                            'name' => $apiUser['name'],
+                            'email' => $apiUser['email'],
+                            'nip' => $nip,
+                            'nis' => $nis,
+                            'role' => $role,
+                            'password' => \Illuminate\Support\Facades\Hash::make($password),
+                        ]);
+                    }
+
+                    // If they are a student, sync Kelas and detail
+                    if ($role === 'siswa') {
+                        $kelasName = $apiUser['class_name'] ?? 'Umum';
+                        $kelas = \App\Models\Kelas::firstOrCreate(
+                            ['nama_kelas' => $kelasName],
+                            ['tahun_ajaran' => $apiUser['angkatan'] ?? '2025/2026']
+                        );
+
+                        $siswa = \App\Models\Siswa::updateOrCreate(
+                            ['user_id' => $localUser->id],
+                            [
+                                'kelas_id' => $kelas->id,
+                                'nomor_hp' => $apiUser['phone'] ?? null,
+                            ]
+                        );
+
+                        if (!$siswa->kartu) {
+                            \App\Models\KartuSiswa::create([
+                                'siswa_id' => $siswa->id,
+                                'token' => 'TK-' . strtoupper(\Illuminate\Support\Str::random(8)),
+                                'status' => 'aktif',
+                            ]);
+                        }
+                    }
+
+                    Auth::login($localUser, $this->boolean('remember'));
+                    $authenticated = true;
                 }
+            } else {
+                // It is not an email (likely NIS/NIP), try siswa login API
+                $response = \Illuminate\Support\Facades\Http::timeout(5)->post($apiUrl . '/siswa/login', [
+                    'login' => $loginValue,
+                    'password' => $password,
+                ]);
 
-                // 3. Sync Siswa Detail
-                $siswa = \App\Models\Siswa::updateOrCreate(
-                    ['user_id' => $localUser->id],
-                    [
-                        'kelas_id' => $kelas->id,
-                        'nomor_hp' => $apiUser['phone'] ?? null,
-                    ]
-                );
+                if ($response->successful() && $response->json('success')) {
+                    $apiData = $response->json('data');
+                    $apiUser = $apiData['user'];
 
-                // 4. Create Kartu if not exists
-                if (!$siswa->kartu) {
-                    \App\Models\KartuSiswa::create([
-                        'siswa_id' => $siswa->id,
-                        'token' => 'TK-' . strtoupper(\Illuminate\Support\Str::random(8)),
-                        'status' => 'aktif',
-                    ]);
+                    $kelasName = $apiUser['class_name'] ?? 'Umum';
+                    $kelas = \App\Models\Kelas::firstOrCreate(
+                        ['nama_kelas' => $kelasName],
+                        ['tahun_ajaran' => $apiUser['angkatan'] ?? '2025/2026']
+                    );
+
+                    $localUser = \App\Models\User::where('email', $apiUser['email'])
+                        ->orWhere('nis', $apiUser['nis'])
+                        ->first();
+
+                    if (!$localUser) {
+                        $localUser = \App\Models\User::create([
+                            'name' => $apiUser['name'],
+                            'email' => $apiUser['email'],
+                            'nis' => $apiUser['nis'],
+                            'role' => 'siswa',
+                            'password' => \Illuminate\Support\Facades\Hash::make($password),
+                        ]);
+                    } else {
+                        $localUser->update([
+                            'name' => $apiUser['name'],
+                            'email' => $apiUser['email'],
+                            'nis' => $apiUser['nis'],
+                            'password' => \Illuminate\Support\Facades\Hash::make($password),
+                        ]);
+                    }
+
+                    $siswa = \App\Models\Siswa::updateOrCreate(
+                        ['user_id' => $localUser->id],
+                        [
+                            'kelas_id' => $kelas->id,
+                            'nomor_hp' => $apiUser['phone'] ?? null,
+                        ]
+                    );
+
+                    if (!$siswa->kartu) {
+                        \App\Models\KartuSiswa::create([
+                            'siswa_id' => $siswa->id,
+                            'token' => 'TK-' . strtoupper(\Illuminate\Support\Str::random(8)),
+                            'status' => 'aktif',
+                        ]);
+                    }
+
+                    Auth::login($localUser, $this->boolean('remember'));
+                    $authenticated = true;
                 }
-
-                Auth::login($localUser, $this->boolean('remember'));
-                $authenticated = true;
             }
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::warning('SIMORO API connection failed: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning('SIMORO API Login SSO failed: ' . $e->getMessage());
         }
 
         // Local Auth Fallback (for local Siswa, Admin, and Guru)

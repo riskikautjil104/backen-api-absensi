@@ -65,4 +65,22 @@ class JadwalController extends Controller
         $jadwal->delete();
         return redirect()->route('admin.jadwal.index')->with('success', 'Jadwal berhasil dihapus.');
     }
+
+    public function getGuruRelations($guruId)
+    {
+        $relations = \DB::table('guru_mapel')
+            ->where('guru_id', $guruId)
+            ->get();
+
+        $mapelIds = $relations->pluck('mapel_id')->unique();
+        $kelasIds = $relations->pluck('kelas_id')->unique();
+
+        $mapels = MataPelajaran::whereIn('id', $mapelIds)->get(['id', 'nama_mapel']);
+        $kelas = Kelas::whereIn('id', $kelasIds)->get(['id', 'nama_kelas']);
+
+        return response()->json([
+            'mapels' => $mapels,
+            'kelas' => $kelas,
+        ]);
+    }
 }

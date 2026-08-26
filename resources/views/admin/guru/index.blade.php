@@ -1,15 +1,19 @@
 <x-app-layout>
     @section('header_title', 'Kelola Guru')
     @section('header_action')
-        <a href="{{ route('admin.guru.create') }}" class="apple-button-primary !py-2 !px-4 !text-[14px]">Tambah Guru</a>
+        <div class="flex items-center space-x-3">
+            <a href="{{ route('admin.guru.create') }}" class="px-4 py-2 bg-apple-blue hover:bg-blue-700 text-white rounded-full text-[12px] font-bold transition-all shadow-sm">Tambah Guru</a>
+            <form action="{{ route('admin.sync.single', 'guru') }}" method="POST" class="inline">
+                @csrf
+                <button type="submit" class="px-4 py-2 bg-[#00aa55] hover:bg-[#008844] text-white rounded-full text-[12px] font-bold transition-all shadow-sm flex items-center space-x-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18"></path></svg>
+                    <span>Sync SIMORO</span>
+                </button>
+            </form>
+        </div>
     @endsection
 
     <div class="space-y-6">
-        @if(session('success'))
-            <div class="bg-green-50 text-green-700 p-4 rounded-apple-lg border border-green-200">
-                {{ session('success') }}
-            </div>
-        @endif
 
         <div class="apple-card overflow-hidden !p-0">
             <table class="w-full text-left border-collapse">

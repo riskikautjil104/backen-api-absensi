@@ -1,6 +1,16 @@
 <x-app-layout>
     @section('header_title', 'Kelola Kelas')
 
+    @section('header_action')
+        <form action="{{ route('admin.sync.single', 'kelas') }}" method="POST" class="inline">
+            @csrf
+            <button type="submit" class="px-4 py-1.5 bg-[#00aa55] hover:bg-[#008844] text-white rounded-full text-[12px] font-bold transition-all shadow-sm flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18"></path></svg>
+                <span>Sync SIMORO</span>
+            </button>
+        </form>
+    @endsection
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <!-- Form Tambah -->
         <div class="lg:col-span-1">

@@ -18,44 +18,39 @@
                 @csrf
                 @method('PUT')
 
+                <div class="space-y-1">
+                    <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">GURU MATA PELAJARAN</label>
+                    <select name="guru_id" id="guru_select" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required>
+                        <option value="">Pilih Guru</option>
+                        @foreach($gurus as $g)
+                            <option value="{{ $g->id }}" {{ old('guru_id', $jadwal->guru_id) == $g->id ? 'selected' : '' }}>{{ $g->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="space-y-1">
                         <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">KELAS</label>
-                        <select name="kelas_id" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required>
-                            @foreach($kelas as $k)
-                                <option value="{{ $k->id }}" {{ old('kelas_id', $jadwal->kelas_id) == $k->id ? 'selected' : '' }}>{{ $k->nama_kelas }}</option>
-                            @endforeach
+                        <select name="kelas_id" id="kelas_select" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required disabled>
+                            <option value="">Pilih Guru Dahulu</option>
                         </select>
                     </div>
 
                     <div class="space-y-1">
                         <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">MATA PELAJARAN</label>
-                        <select name="mapel_id" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required>
-                            @foreach($mapels as $m)
-                                <option value="{{ $m->id }}" {{ old('mapel_id', $jadwal->mapel_id) == $m->id ? 'selected' : '' }}>{{ $m->nama_mapel }}</option>
-                            @endforeach
+                        <select name="mapel_id" id="mapel_select" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required disabled>
+                            <option value="">Pilih Guru Dahulu</option>
                         </select>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">GURU MATA PELAJARAN</label>
-                        <select name="guru_id" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required>
-                            @foreach($gurus as $g)
-                                <option value="{{ $g->id }}" {{ old('guru_id', $jadwal->guru_id) == $g->id ? 'selected' : '' }}>{{ $g->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="space-y-1">
-                        <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">HARI</label>
-                        <select name="hari" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required>
-                            @foreach(['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as $h)
-                                <option value="{{ $h }}" {{ old('hari', $jadwal->hari) == $h ? 'selected' : '' }}>{{ $h }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                <div class="space-y-1">
+                    <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">HARI</label>
+                    <select name="hari" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg focus:ring-2 focus:ring-apple-blue" required>
+                        @foreach(['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as $h)
+                            <option value="{{ $h }}" {{ old('hari', $jadwal->hari) == $h ? 'selected' : '' }}>{{ $h }}</option>
+                        @endforeach
+                    </select>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -73,5 +68,63 @@
                 <button type="submit" class="w-full apple-button-primary mt-4">Perbarui Jadwal</button>
             </form>
         </div>
-    </div>
+    <script>
+        function loadRelations(guruId, selectedKelasId = null, selectedMapelId = null) {
+            const kelasSelect = document.getElementById('kelas_select');
+            const mapelSelect = document.getElementById('mapel_select');
+
+            if (!guruId) {
+                kelasSelect.innerHTML = '<option value="">Pilih Guru Dahulu</option>';
+                kelasSelect.disabled = true;
+                mapelSelect.innerHTML = '<option value="">Pilih Guru Dahulu</option>';
+                mapelSelect.disabled = true;
+                return;
+            }
+
+            const url = "{{ url('/admin/jadwal/guru-relations') }}/" + guruId;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    // Update Kelas Select
+                    kelasSelect.innerHTML = '<option value="">Pilih Kelas</option>';
+                    if (data.kelas.length > 0) {
+                        data.kelas.forEach(k => {
+                            const isSelected = selectedKelasId == k.id ? 'selected' : '';
+                            kelasSelect.innerHTML += `<option value="${k.id}" ${isSelected}>${k.nama_kelas}</option>`;
+                        });
+                        kelasSelect.disabled = false;
+                    } else {
+                        kelasSelect.innerHTML = '<option value="">Tidak ada kelas terkait guru ini</option>';
+                        kelasSelect.disabled = true;
+                    }
+
+                    // Update Mapel Select
+                    mapelSelect.innerHTML = '<option value="">Pilih Mapel</option>';
+                    if (data.mapels.length > 0) {
+                        data.mapels.forEach(m => {
+                            const isSelected = selectedMapelId == m.id ? 'selected' : '';
+                            mapelSelect.innerHTML += `<option value="${m.id}" ${isSelected}>${m.nama_mapel}</option>`;
+                        });
+                        mapelSelect.disabled = false;
+                    } else {
+                        mapelSelect.innerHTML = '<option value="">Tidak ada mapel terkait guru ini</option>';
+                        mapelSelect.disabled = true;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching relations:', error);
+                });
+        }
+
+        // On Load
+        const initialGuruId = "{{ $jadwal->guru_id }}";
+        const initialKelasId = "{{ $jadwal->kelas_id }}";
+        const initialMapelId = "{{ $jadwal->mapel_id }}";
+        loadRelations(initialGuruId, initialKelasId, initialMapelId);
+
+        // On Change
+        document.getElementById('guru_select').addEventListener('change', function () {
+            loadRelations(this.value);
+        });
+    </script>
 </x-app-layout>

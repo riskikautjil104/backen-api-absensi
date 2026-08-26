@@ -9,21 +9,22 @@
                 <form action="{{ route('admin.jadwal.store') }}" method="POST" class="space-y-4">
                     @csrf
                     <div class="space-y-1">
+                        <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">GURU</label>
+                        <select name="guru_id" id="guru_select" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg" required>
+                            <option value="">Pilih Guru</option>
+                            @foreach($gurus as $g) <option value="{{ $g->id }}">{{ $g->name }}</option> @endforeach
+                        </select>
+                    </div>
+                    <div class="space-y-1">
                         <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">KELAS</label>
-                        <select name="kelas_id" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg" required>
-                            @foreach($kelas as $k) <option value="{{ $k->id }}">{{ $k->nama_kelas }}</option> @endforeach
+                        <select name="kelas_id" id="kelas_select" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg" required disabled>
+                            <option value="">Pilih Guru Dahulu</option>
                         </select>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">MATA PELAJARAN</label>
-                        <select name="mapel_id" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg" required>
-                            @foreach($mapels as $m) <option value="{{ $m->id }}">{{ $m->nama_mapel }}</option> @endforeach
-                        </select>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[12px] font-semibold text-apple-gray-muted-48 ml-4 uppercase">GURU</label>
-                        <select name="guru_id" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg" required>
-                            @foreach($gurus as $g) <option value="{{ $g->id }}">{{ $g->name }}</option> @endforeach
+                        <select name="mapel_id" id="mapel_select" class="block w-full px-4 py-3 bg-apple-parchment border-none rounded-apple-lg" required disabled>
+                            <option value="">Pilih Guru Dahulu</option>
                         </select>
                     </div>
                     <div class="space-y-1">
@@ -90,5 +91,51 @@
                 </table>
             </div>
         </div>
-    </div>
+    <script>
+        document.getElementById('guru_select').addEventListener('change', function () {
+            const guruId = this.value;
+            const kelasSelect = document.getElementById('kelas_select');
+            const mapelSelect = document.getElementById('mapel_select');
+
+            if (!guruId) {
+                kelasSelect.innerHTML = '<option value="">Pilih Guru Dahulu</option>';
+                kelasSelect.disabled = true;
+                mapelSelect.innerHTML = '<option value="">Pilih Guru Dahulu</option>';
+                mapelSelect.disabled = true;
+                return;
+            }
+
+            const url = "{{ url('/admin/jadwal/guru-relations') }}/" + guruId;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    // Update Kelas Select
+                    kelasSelect.innerHTML = '<option value="">Pilih Kelas</option>';
+                    if (data.kelas.length > 0) {
+                        data.kelas.forEach(k => {
+                            kelasSelect.innerHTML += `<option value="${k.id}">${k.nama_kelas}</option>`;
+                        });
+                        kelasSelect.disabled = false;
+                    } else {
+                        kelasSelect.innerHTML = '<option value="">Tidak ada kelas terkait guru ini</option>';
+                        kelasSelect.disabled = true;
+                    }
+
+                    // Update Mapel Select
+                    mapelSelect.innerHTML = '<option value="">Pilih Mapel</option>';
+                    if (data.mapels.length > 0) {
+                        data.mapels.forEach(m => {
+                            mapelSelect.innerHTML += `<option value="${m.id}">${m.nama_mapel}</option>`;
+                        });
+                        mapelSelect.disabled = false;
+                    } else {
+                        mapelSelect.innerHTML = '<option value="">Tidak ada mapel terkait guru ini</option>';
+                        mapelSelect.disabled = true;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching relations:', error);
+                });
+        });
+    </script>
 </x-app-layout>
