@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #ffffff;
+        color: #1d1d1f;
+        font-family: 'SF Pro Text', 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'SF Pro Display', 'Inter', system-ui, -apple-system, sans-serif;
+        font-weight: 600;
+        letter-spacing: -0.011em;
+    }
+
+    h1 {
+        @apply text-[56px] leading-[1.07] tracking-tightest;
+    }
+
+    h2 {
+        @apply text-[40px] leading-[1.1] tracking-normal;
+    }
+}
+
+@layer components {
+    .apple-button-primary {
+        @apply bg-apple-blue text-white px-[22px] py-[11px] rounded-full font-sans text-[17px] active:scale-95 transition-transform duration-200 inline-flex items-center justify-center;
+    }
+
+    .apple-button-secondary {
+        @apply bg-white text-apple-blue border border-apple-blue px-[22px] py-[11px] rounded-full font-sans text-[17px] active:scale-95 transition-transform duration-200 inline-flex items-center justify-center;
+    }
+
+    .glass {
+        @apply bg-white/70 backdrop-blur-xl border border-white/20;
+    }
+
+    .glass-dark {
+        @apply bg-black/40 backdrop-blur-xl border border-white/10;
+    }
+
+    .atm-card {
+        @apply relative w-[350px] h-[220px] rounded-[24px] shadow-2xl p-6 text-white overflow-hidden transition-all duration-500 hover:scale-105;
+        perspective: 1000px;
+    }
+
+    .animate-float {
+        animation: float 6s ease-in-out infinite;
+    }
+
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+    }
+
+    .fade-in-up {
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .apple-card {
+        @apply bg-apple-canvas border border-black/5 rounded-apple-lg p-6 shadow-sm;
+    }
+
+    .apple-nav-frosted {
+        @apply sticky top-0 z-50 bg-apple-parchment/80 backdrop-blur-md border-b border-black/5 h-[52px] flex items-center px-4;
+    }
+
+    .apple-bottom-nav {
+        @apply fixed bottom-0 left-0 right-0 bg-apple-parchment/80 backdrop-blur-md border-t border-black/5 h-[64px] flex items-center justify-around z-50;
+    }
+
+    .apple-nav-item {
+        @apply flex flex-col items-center justify-center text-[10px] text-apple-gray-muted-48 hover:text-apple-blue transition-colors;
+    }
+
+    .apple-nav-item.active {
+        @apply text-apple-blue;
+    }
+}
