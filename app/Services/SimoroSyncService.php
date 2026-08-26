@@ -167,12 +167,16 @@ class SimoroSyncService
                     $guru = User::where('email', $m['teacher_email'])->first();
                 }
 
-                // 3. Link classes in guru_mapel and generate dummy schedules
+                // 3. Link classes in guru_mapel
                 if (isset($m['classes']) && is_array($m['classes'])) {
                     foreach ($m['classes'] as $c) {
-                        $kelas = Kelas::where('id', $c['id'])
-                            ->orWhere('nama_kelas', $c['name'])
-                            ->first();
+                        $kelas = Kelas::updateOrCreate(
+                            ['id' => $c['id']],
+                            [
+                                'nama_kelas' => $c['name'] ?? 'Kelas ' . $c['id'],
+                                'tahun_ajaran' => '2025/2026'
+                            ]
+                        );
 
                         if ($kelas && $guru) {
                             // Link in guru_mapel
@@ -233,20 +237,23 @@ class SimoroSyncService
 
                 foreach ($students as $s) {
                     $classId = null;
-                    if (isset($s['class']['name'])) {
-                        $kelas = Kelas::firstOrCreate(
-                            ['nama_kelas' => $s['class']['name']],
-                            ['tahun_ajaran' => $s['class']['tahun_ajaran'] ?? '2025/2026']
+                    if (isset($s['class']['id'])) {
+                        $kelas = Kelas::updateOrCreate(
+                            ['id' => $s['class']['id']],
+                            [
+                                'nama_kelas' => $s['class']['name'] ?? 'Kelas ' . $s['class']['id'],
+                                'tahun_ajaran' => $s['class']['tahun_ajaran'] ?? '2025/2026'
+                            ]
                         );
                         $classId = $kelas->id;
+                    } elseif (isset($s['class_id'])) {
+                        $classId = $s['class_id'];
                     } elseif (isset($s['class_name'])) {
                         $kelas = Kelas::firstOrCreate(
                             ['nama_kelas' => $s['class_name']],
                             ['tahun_ajaran' => $s['angkatan'] ?? '2025/2026']
                         );
                         $classId = $kelas->id;
-                    } elseif (isset($s['class_id'])) {
-                        $classId = $s['class_id'];
                     }
 
                     $nis = $s['nis'] ?? null;
