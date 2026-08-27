@@ -21,7 +21,8 @@ Artisan::command('inspire', function () {
 */
 
 Schedule::command('schedule:notify-tomorrow')
-    ->dailyAt('10:00') // 10:00 UTC = 19:00 WIT (Waktu Indonesia Timur, UTC+9)
+    ->timezone('Asia/Jayapura')
+    ->dailyAt('19:00') // 19:00 WIT (Waktu Indonesia Timur, UTC+9)
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/fcm-schedule.log'));

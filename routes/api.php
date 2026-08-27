@@ -35,5 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // awal batas suci yang kamu ubah
     Route::post('/guru/device-token', [GuruApiController::class, 'updateDeviceToken']);
+    Route::post('/guru/absensi/status', [GuruApiController::class, 'updateStudentStatus']);
+    Route::get('/guru/kelas/{kelas_id}/mapel/{mapel_id}/export-excel', [GuruApiController::class, 'exportAttendanceExcel']);
+    Route::get('/guru/kelas/{kelas_id}/mapel/{mapel_id}/export-pdf', [GuruApiController::class, 'exportAttendancePdf']);
     // akhir batas suci yang kamu ubah
 });

@@ -29,12 +29,58 @@ class SiswaApiController extends Controller
             ->orWhere('nis', $login)
             ->first();
 
+        // awal batas suci yang kamu ubah
         if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Email/NIS atau kata sandi yang Anda masukkan salah.'
-            ], 401);
+            // Auto-Sync Bridge: Jika login lokal gagal, verifikasi langsung ke server utama SIMORO
+            $simoroVerified = false;
+            try {
+                $simoroUrl = config('services.simoro.url', 'https://simoro.sma-n5-morotai.id/api') . '/siswa/login';
+                $simoroResponse = \Illuminate\Support\Facades\Http::timeout(5)->post($simoroUrl, [
+                    'login' => $login,
+                    'email' => $login,
+                    'password' => $request->password,
+                ]);
+
+                if ($simoroResponse->successful() && $simoroResponse->json('success') === true) {
+                    $simoroData = $simoroResponse->json('data.user');
+                    if ($simoroData) {
+                        if ($user) {
+                            // Update password lokal di server Absensi agar sinkron permanen dengan SIMORO
+                            $user->password = Hash::make($request->password);
+                            $user->role = 'siswa';
+                            $user->save();
+                            $simoroVerified = true;
+                        } else {
+                            // Auto-provision user jika belum ada di database absensi
+                            $user = User::create([
+                                'name' => $simoroData['name'] ?? 'Siswa',
+                                'email' => $simoroData['email'] ?? $login,
+                                'nis' => $simoroData['nis'] ?? null,
+                                'password' => Hash::make($request->password),
+                                'role' => 'siswa',
+                            ]);
+                            
+                            $classId = $simoroData['class_id'] ?? null;
+                            Siswa::firstOrCreate(
+                                ['user_id' => $user->id],
+                                ['kelas_id' => $classId]
+                            );
+                            $simoroVerified = true;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Fallback jika SIMORO timeout / unreachable
+            }
+
+            if (!$simoroVerified) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email/NIS atau kata sandi yang Anda masukkan salah.'
+                ], 401);
+            }
         }
+        // akhir batas suci yang kamu ubah
 
         if ($user->role !== 'siswa') {
             return response()->json([
