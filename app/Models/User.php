@@ -27,6 +27,9 @@ class User extends Authenticatable
         'foto',
         'nis',
         'nip',
+        // awal batas suci yang kamu ubah
+        'fcm_token',
+        // akhir batas suci yang kamu ubah
     ];
 
     public function isAdmin() { return $this->role === 'admin'; }

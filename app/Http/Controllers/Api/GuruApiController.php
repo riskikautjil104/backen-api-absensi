@@ -333,4 +333,26 @@ class GuruApiController extends Controller
             ]
         ]);
     }
+
+    // awal batas suci yang kamu ubah
+    /**
+     * Simpan / Update FCM Device Token Guru
+     * POST /api/guru/device-token
+     */
+    public function updateDeviceToken(Request $request)
+    {
+        $request->validate([
+            'fcm_token' => 'required|string|min:10',
+        ]);
+
+        $request->user()->update([
+            'fcm_token' => $request->fcm_token,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'FCM Device Token Guru berhasil disimpan.',
+        ], 200);
+    }
+    // akhir batas suci yang kamu ubah
 }
