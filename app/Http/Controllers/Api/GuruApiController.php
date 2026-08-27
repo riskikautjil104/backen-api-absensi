@@ -361,84 +361,114 @@ class GuruApiController extends Controller
      */
     public function updateStudentStatus(Request $request)
     {
-        $request->validate([
-            'siswa_id' => 'required|integer',
-            'kelas_id' => 'required|integer',
-            'mapel_id' => 'required|integer',
-            'status'   => 'required|in:hadir,terlambat,izin,sakit,alpa,alpha,belum absen',
-        ]);
+        try {
+            $request->validate([
+                'siswa_id' => 'required|integer',
+                'kelas_id' => 'required|integer',
+                'mapel_id' => 'required|integer',
+                'status'   => 'required|in:hadir,terlambat,izin,sakit,alpa,alpha,belum absen',
+            ]);
 
-        $user = $request->user();
-        $siswaId = $request->input('siswa_id');
-        $kelasId = $request->input('kelas_id');
-        $mapelId = $request->input('mapel_id');
-        $newStatus = strtolower($request->input('status'));
-        if ($newStatus === 'alpha') $newStatus = 'alpa';
+            $user = $request->user();
+            $siswaId = (int)$request->input('siswa_id');
+            $kelasId = (int)$request->input('kelas_id');
+            $mapelId = (int)$request->input('mapel_id');
+            $rawStatus = strtolower($request->input('status'));
+            $newStatus = ($rawStatus === 'alpha') ? 'alpa' : $rawStatus;
 
-        $targetDate = $request->input('date') ?? Carbon::now('Asia/Jayapura')->toDateString();
+            $targetDate = $request->input('date') ?? Carbon::now('Asia/Jayapura')->toDateString();
 
-        // 1. Cari atau tentukan Jadwal yang sesuai
-        $schedule = Jadwal::where('guru_id', $user->id)
-            ->where('kelas_id', $kelasId)
-            ->where('mapel_id', $mapelId)
-            ->first();
+            // 1. Cari atau tentukan Jadwal yang sesuai
+            $schedule = Jadwal::where('guru_id', $user->id)
+                ->where('kelas_id', $kelasId)
+                ->where('mapel_id', $mapelId)
+                ->first();
 
-        $scheduleId = $schedule ? $schedule->id : null;
+            $scheduleId = $schedule ? $schedule->id : null;
 
-        // Jika belum ada jadwal sama sekali, ambil/buat jadwal default untuk mencatat absensi
-        if (!$scheduleId) {
-            $schedule = Jadwal::firstOrCreate(
-                [
-                    'guru_id'  => $user->id,
-                    'kelas_id' => $kelasId,
-                    'mapel_id' => $mapelId,
-                ],
-                [
-                    'hari'        => $this->getIndoDay(),
-                    'jam_mulai'   => '07:30:00',
-                    'jam_selesai' => '09:00:00',
+            // Jika belum ada jadwal sama sekali, ambil/buat jadwal default untuk mencatat absensi
+            if (!$scheduleId) {
+                $days = ['Sunday' => 'Minggu', 'Monday' => 'Senin', 'Tuesday' => 'Selasa', 'Wednesday' => 'Rabu', 'Thursday' => 'Kamis', 'Friday' => 'Jumat', 'Saturday' => 'Sabtu'];
+                $hariSekarang = $days[Carbon::now('Asia/Jayapura')->format('l')] ?? 'Senin';
+                if ($hariSekarang === 'Minggu') $hariSekarang = 'Senin';
+
+                $schedule = Jadwal::firstOrCreate(
+                    [
+                        'guru_id'  => $user->id,
+                        'kelas_id' => $kelasId,
+                        'mapel_id' => $mapelId,
+                    ],
+                    [
+                        'hari'        => $hariSekarang,
+                        'jam_mulai'   => '07:30:00',
+                        'jam_selesai' => '09:00:00',
+                    ]
+                );
+                $scheduleId = $schedule->id;
+            }
+
+            // 2. Update atau Hapus Absensi
+            if ($newStatus === 'belum absen') {
+                Absensi::where('siswa_id', $siswaId)
+                    ->where('jadwal_id', $scheduleId)
+                    ->whereDate('waktu_scan', $targetDate)
+                    ->delete();
+                $statusResult = 'belum absen';
+                $waktuScanResult = null;
+            } else {
+                $nowWit = Carbon::now('Asia/Jayapura');
+                
+                // Cari apakah sudah ada absensi pada tanggal target untuk jadwal ini
+                $existingAbsensi = Absensi::where('siswa_id', $siswaId)
+                    ->where('jadwal_id', $scheduleId)
+                    ->whereDate('waktu_scan', $targetDate)
+                    ->first();
+
+                // Format status yang disimpan
+                $dbStatus = $newStatus;
+
+                if ($existingAbsensi) {
+                    $existingAbsensi->update([
+                        'status'     => $dbStatus,
+                        'waktu_scan' => $nowWit->toDateTimeString(),
+                    ]);
+                    $absensi = $existingAbsensi;
+                } else {
+                    $absensi = Absensi::create([
+                        'siswa_id'   => $siswaId,
+                        'jadwal_id'  => $scheduleId,
+                        'status'     => $dbStatus,
+                        'waktu_scan' => $nowWit->toDateTimeString(),
+                    ]);
+                }
+                
+                $statusResult = $absensi->status;
+                $waktuScanResult = $nowWit->format('H:i');
+            }
+
+            $siswa = Siswa::with('user')->find($siswaId);
+            $namaSiswa = $siswa?->user?->name ?? 'Siswa';
+
+            return response()->json([
+                'success' => true,
+                'message' => "Status kehadiran {$namaSiswa} berhasil diubah menjadi " . strtoupper($statusResult),
+                'data'    => [
+                    'siswa_id'          => $siswaId,
+                    'name'              => $namaSiswa,
+                    'attendance_status' => $statusResult,
+                    'scanned_time'      => $waktuScanResult,
                 ]
-            );
-            $scheduleId = $schedule->id;
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error updateStudentStatus: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengubah status kehadiran: ' . $e->getMessage(),
+                'error'   => $e->getMessage(),
+            ], 500);
         }
-
-        // 2. Update atau Hapus Absensi
-        if ($newStatus === 'belum absen') {
-            Absensi::where('siswa_id', $siswaId)
-                ->where('jadwal_id', $scheduleId)
-                ->whereDate('waktu_scan', $targetDate)
-                ->delete();
-            $statusResult = 'belum absen';
-            $waktuScanResult = null;
-        } else {
-            $nowWit = Carbon::now('Asia/Jayapura');
-            $absensi = Absensi::updateOrCreate(
-                [
-                    'siswa_id'  => $siswaId,
-                    'jadwal_id' => $scheduleId,
-                ],
-                [
-                    'status'     => $newStatus,
-                    'waktu_scan' => $nowWit->toDateTimeString(),
-                ]
-            );
-            $statusResult = $absensi->status;
-            $waktuScanResult = $nowWit->format('H:i');
-        }
-
-        $siswa = Siswa::with('user')->find($siswaId);
-        $namaSiswa = $siswa?->user?->name ?? 'Siswa';
-
-        return response()->json([
-            'success' => true,
-            'message' => "Status kehadiran {$namaSiswa} berhasil diubah menjadi " . strtoupper($statusResult),
-            'data'    => [
-                'siswa_id'          => $siswaId,
-                'name'              => $namaSiswa,
-                'attendance_status' => $statusResult,
-                'scanned_time'      => $waktuScanResult,
-            ]
-        ]);
     }
 
     /**
