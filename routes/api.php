@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\SiswaApiController;
 use App\Http\Controllers\Api\GuruApiController;
 use App\Http\Controllers\Api\TugasApiController;
+use App\Http\Controllers\Api\BahanAjarApiController;
 
 // Public API routes
 Route::post('/siswa/login', [SiswaApiController::class, 'login']);
@@ -30,6 +31,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/siswa/tugas', [TugasApiController::class, 'siswaList']);
     Route::get('/siswa/tugas/{id}', [TugasApiController::class, 'siswaShow']);
     Route::post('/siswa/tugas/{id}/kumpul', [TugasApiController::class, 'siswaSubmit']);
+
+    // Siswa Bahan Ajar & Evaluasi API
+    Route::get('/siswa/bahan-ajar', [BahanAjarApiController::class, 'siswaIndex']);
+    Route::get('/siswa/bahan-ajar/{id}', [BahanAjarApiController::class, 'siswaShow']);
+    Route::post('/siswa/bahan-ajar/{id}/evaluasi/submit', [BahanAjarApiController::class, 'siswaSubmitEvaluasi']);
     // akhir batas suci yang kamu ubah
 
     // Guru Mobile API
@@ -52,5 +58,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/guru/tugas/{id}', [TugasApiController::class, 'guruDestroy']);
     Route::post('/guru/tugas/{tugas_id}/nilai/{siswa_id}', [TugasApiController::class, 'guruGrade']);
     Route::get('/guru/tugas/rekap/kelas/{kelas_id}/mapel/{mapel_id}', [TugasApiController::class, 'guruRekap']);
+
+    // Guru Bahan Ajar & Evaluasi API
+    Route::get('/guru/bahan-ajar', [BahanAjarApiController::class, 'guruIndex']);
+    Route::post('/guru/bahan-ajar', [BahanAjarApiController::class, 'guruStore']);
+    Route::get('/guru/bahan-ajar/{id}', [BahanAjarApiController::class, 'guruShow']);
+    Route::delete('/guru/bahan-ajar/{id}', [BahanAjarApiController::class, 'guruDestroy']);
+    Route::post('/guru/bahan-ajar/{bahan_ajar_id}/evaluasi/{siswa_id}/nilai', [BahanAjarApiController::class, 'guruGradeEvaluasi']);
     // akhir batas suci yang kamu ubah
 });
