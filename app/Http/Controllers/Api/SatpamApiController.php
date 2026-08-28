@@ -381,6 +381,55 @@ class SatpamApiController extends Controller
     }
 
     /**
+     * Evaluasi status kehadiran & kepulangan siswa secara komprehensif
+     */
+    private function evaluateAttendanceStatus($masukRecord, $pulangRecord, Carbon $targetDate)
+    {
+        $nowWit = Carbon::now('Asia/Jayapura');
+        $isToday = $targetDate->isToday();
+        $isPastDate = $targetDate->isPast() && !$isToday;
+        $jamPulangLimit = Carbon::today('Asia/Jayapura')->setHour(14)->setMinute(0)->setSecond(0);
+        $isAfterDismissal = $isToday ? $nowWit->isAfter($jamPulangLimit) : true;
+
+        $hasMasuk = $masukRecord !== null;
+        $hasPulang = $pulangRecord !== null;
+
+        if ($hasMasuk && $hasPulang) {
+            if ($masukRecord->status === 'terlambat') {
+                return [
+                    'key' => 'terlambat_pulang',
+                    'label' => 'Terlambat (Sudah Pulang)',
+                ];
+            }
+            return [
+                'key' => 'sudah_pulang',
+                'label' => 'Hadir Lengkap (Sudah Pulang)',
+            ];
+        } elseif ($hasMasuk && !$hasPulang) {
+            if ($isPastDate || ($isToday && $isAfterDismissal)) {
+                return [
+                    'key' => 'tidak_absen_pulang',
+                    'label' => 'Tidak Absen Pulang (Bolos)',
+                ];
+            }
+            return [
+                'key' => 'di_sekolah',
+                'label' => 'Masih di Sekolah',
+            ];
+        } elseif (!$hasMasuk && $hasPulang) {
+            return [
+                'key' => 'hanya_pulang',
+                'label' => 'Hanya Scan Pulang',
+            ];
+        }
+
+        return [
+            'key' => 'belum_hadir',
+            'label' => 'Tidak Hadir (Alpa)',
+        ];
+    }
+
+    /**
      * Rekapitulasi Kehadiran Seluruh Siswa Harian / Per Tanggal (Satpam)
      * GET /api/satpam/rekap-harian
      */
@@ -414,7 +463,13 @@ class SatpamApiController extends Controller
             ->get()
             ->groupBy('siswa_id');
 
-        $rekapList = $allStudents->map(function ($s) use ($attendanceDate) {
+        $hadirLengkapCount = 0;
+        $terlambatCount = 0;
+        $tidakAbsenPulangCount = 0;
+        $diSekolahCount = 0;
+        $alpaCount = 0;
+
+        $rekapList = $allStudents->map(function ($s) use ($attendanceDate, $targetDate, &$hadirLengkapCount, &$terlambatCount, &$tidakAbsenPulangCount, &$diSekolahCount, &$alpaCount) {
             $studentAttendance = $attendanceDate->get($s->id, collect());
 
             $masukRecord = $studentAttendance->first(function ($att) {
@@ -425,12 +480,13 @@ class SatpamApiController extends Controller
                 return $att->tipe_presensi === 'gerbang_pulang';
             });
 
-            $status = 'belum_hadir';
-            if ($pulangRecord) {
-                $status = 'sudah_pulang';
-            } elseif ($masukRecord) {
-                $status = $masukRecord->status; // 'hadir' atau 'terlambat'
-            }
+            $eval = $this->evaluateAttendanceStatus($masukRecord, $pulangRecord, $targetDate);
+
+            if ($eval['key'] === 'sudah_pulang') $hadirLengkapCount++;
+            elseif ($eval['key'] === 'terlambat_pulang') $terlambatCount++;
+            elseif ($eval['key'] === 'tidak_absen_pulang') $tidakAbsenPulangCount++;
+            elseif ($eval['key'] === 'di_sekolah') $diSekolahCount++;
+            elseif ($eval['key'] === 'belum_hadir') $alpaCount++;
 
             return [
                 'siswa_id' => $s->id,
@@ -440,7 +496,8 @@ class SatpamApiController extends Controller
                 'kelas_id' => $s->kelas_id,
                 'class_name' => $s->kelas->nama_kelas ?? '-',
                 'foto' => $s->user->foto ? url('storage/' . $s->user->foto) : null,
-                'status' => $status,
+                'status' => $eval['key'],
+                'status_label' => $eval['label'],
                 'jam_masuk' => $masukRecord ? Carbon::parse($masukRecord->waktu_scan)->format('H:i') . ' WIT' : null,
                 'jam_pulang' => $pulangRecord ? Carbon::parse($pulangRecord->waktu_scan)->format('H:i') . ' WIT' : null,
                 'metode_scan' => $masukRecord?->metode_scan ?? '-',
@@ -459,8 +516,12 @@ class SatpamApiController extends Controller
                 'selected_date' => $selectedDate,
                 'formatted_date' => Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y'),
                 'total_students' => $rekapList->count(),
-                'hadir_count' => $rekapList->whereIn('status', ['hadir', 'terlambat', 'sudah_pulang'])->count(),
-                'belum_hadir_count' => $rekapList->where('status', 'belum_hadir')->count(),
+                'hadir_count' => $rekapList->whereIn('status', ['sudah_pulang', 'terlambat_pulang', 'di_sekolah'])->count(),
+                'hadir_lengkap_count' => $hadirLengkapCount,
+                'terlambat_count' => $terlambatCount,
+                'tidak_absen_pulang_count' => $tidakAbsenPulangCount,
+                'di_sekolah_count' => $diSekolahCount,
+                'belum_hadir_count' => $alpaCount,
                 'classes' => $classes,
                 'students' => $rekapList->values(),
             ],
@@ -503,7 +564,7 @@ class SatpamApiController extends Controller
             'Expires' => '0',
         ];
 
-        $callback = function () use ($students, $attendance, $selectedDate) {
+        $callback = function () use ($students, $attendance, $selectedDate, $targetDate) {
             $file = fopen('php://output', 'w');
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
 
@@ -512,7 +573,7 @@ class SatpamApiController extends Controller
             fputcsv($file, ['Tanggal', Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y')]);
             fputcsv($file, []);
 
-            fputcsv($file, ['No', 'Nama Siswa', 'NIS / NISN', 'Kelas', 'Jam Masuk', 'Jam Pulang', 'Status Kehadiran']);
+            fputcsv($file, ['No', 'Nama Siswa', 'NIS / NISN', 'Kelas', 'Jam Masuk', 'Jam Pulang', 'Status Kehadiran & Kepulangan']);
 
             $no = 1;
             foreach ($students as $s) {
@@ -520,11 +581,7 @@ class SatpamApiController extends Controller
                 $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
                 $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
 
-                $statusLabel = 'Belum Hadir';
-                if ($pulang) $statusLabel = 'Sudah Pulang';
-                elseif ($masuk) {
-                    $statusLabel = $masuk->status === 'terlambat' ? 'Terlambat' : 'Hadir Tepat Waktu';
-                }
+                $eval = $this->evaluateAttendanceStatus($masuk, $pulang, $targetDate);
 
                 fputcsv($file, [
                     $no++,
@@ -533,7 +590,7 @@ class SatpamApiController extends Controller
                     $s->kelas->nama_kelas ?? '-',
                     $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') . ' WIT' : '-',
                     $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') . ' WIT' : '-',
-                    $statusLabel,
+                    $eval['label'],
                 ]);
             }
 
@@ -570,10 +627,11 @@ class SatpamApiController extends Controller
         $students = $query->orderBy('kelas_id', 'asc')->get();
         $attendance = Absensi::whereDate('waktu_scan', $targetDate)->get()->groupBy('siswa_id');
 
-        $hadirCount = 0;
+        $hadirLengkapCount = 0;
         $terlambatCount = 0;
-        $pulangCount = 0;
-        $belumHadirCount = 0;
+        $tidakAbsenPulangCount = 0;
+        $diSekolahCount = 0;
+        $alpaCount = 0;
 
         $rows = [];
         $no = 1;
@@ -582,21 +640,13 @@ class SatpamApiController extends Controller
             $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
             $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
 
-            $statusText = 'BELUM HADIR';
-            if ($pulang) {
-                $statusText = 'SUDAH PULANG';
-                $pulangCount++;
-            } elseif ($masuk) {
-                if ($masuk->status === 'terlambat') {
-                    $statusText = 'TERLAMBAT';
-                    $terlambatCount++;
-                } else {
-                    $statusText = 'HADIR';
-                    $hadirCount++;
-                }
-            } else {
-                $belumHadirCount++;
-            }
+            $eval = $this->evaluateAttendanceStatus($masuk, $pulang, $targetDate);
+
+            if ($eval['key'] === 'sudah_pulang') $hadirLengkapCount++;
+            elseif ($eval['key'] === 'terlambat_pulang') $terlambatCount++;
+            elseif ($eval['key'] === 'tidak_absen_pulang') $tidakAbsenPulangCount++;
+            elseif ($eval['key'] === 'di_sekolah') $diSekolahCount++;
+            elseif ($eval['key'] === 'belum_hadir') $alpaCount++;
 
             $rows[] = [
                 'no' => $no++,
@@ -605,7 +655,8 @@ class SatpamApiController extends Controller
                 'kelas' => $s->kelas->nama_kelas ?? '-',
                 'jam_masuk' => $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') . ' WIT' : '-',
                 'jam_pulang' => $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') . ' WIT' : '-',
-                'status' => $statusText,
+                'status' => strtoupper($eval['label']),
+                'status_key' => $eval['key'],
             ];
         }
 
@@ -614,7 +665,7 @@ class SatpamApiController extends Controller
         $officerName = auth()->user()->name ?? 'Petugas Satpam';
 
         $html = view('satpam.print_rekap', compact(
-            'rows', 'totalSiswa', 'hadirCount', 'terlambatCount', 'pulangCount', 'belumHadirCount', 'formattedDate', 'officerName'
+            'rows', 'totalSiswa', 'hadirLengkapCount', 'terlambatCount', 'tidakAbsenPulangCount', 'diSekolahCount', 'alpaCount', 'formattedDate', 'officerName'
         ))->render();
 
         return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);

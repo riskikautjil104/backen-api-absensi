@@ -13,6 +13,67 @@ use Carbon\Carbon;
 
 class RekapController extends Controller
 {
+    /**
+     * Evaluasi status kehadiran & kepulangan siswa secara komprehensif
+     */
+    private function evaluateAttendanceStatus($masukRecord, $pulangRecord, Carbon $targetDate)
+    {
+        $nowWit = Carbon::now('Asia/Jayapura');
+        $isToday = $targetDate->isToday();
+        $isPastDate = $targetDate->isPast() && !$isToday;
+        $jamPulangLimit = Carbon::today('Asia/Jayapura')->setHour(14)->setMinute(0)->setSecond(0);
+        $isAfterDismissal = $isToday ? $nowWit->isAfter($jamPulangLimit) : true;
+
+        $hasMasuk = $masukRecord !== null;
+        $hasPulang = $pulangRecord !== null;
+
+        if ($hasMasuk && $hasPulang) {
+            if ($masukRecord->status === 'terlambat') {
+                return [
+                    'key' => 'terlambat_pulang',
+                    'label' => 'Terlambat (Sudah Pulang)',
+                    'badge_class' => 'bg-amber-100 text-amber-900 border-amber-300',
+                    'badge_icon' => '⚠️',
+                ];
+            }
+            return [
+                'key' => 'sudah_pulang',
+                'label' => 'Hadir Lengkap (Sudah Pulang)',
+                'badge_class' => 'bg-emerald-100 text-emerald-900 border-emerald-300',
+                'badge_icon' => '✅',
+            ];
+        } elseif ($hasMasuk && !$hasPulang) {
+            if ($isPastDate || ($isToday && $isAfterDismissal)) {
+                return [
+                    'key' => 'tidak_absen_pulang',
+                    'label' => 'Tidak Absen Pulang (Bolos)',
+                    'badge_class' => 'bg-purple-100 text-purple-900 border-purple-300',
+                    'badge_icon' => '🚨',
+                ];
+            }
+            return [
+                'key' => 'di_sekolah',
+                'label' => 'Masih di Sekolah',
+                'badge_class' => 'bg-sky-100 text-sky-900 border-sky-300',
+                'badge_icon' => '🏫',
+            ];
+        } elseif (!$hasMasuk && $hasPulang) {
+            return [
+                'key' => 'hanya_pulang',
+                'label' => 'Hanya Scan Pulang',
+                'badge_class' => 'bg-orange-100 text-orange-900 border-orange-300',
+                'badge_icon' => '❓',
+            ];
+        }
+
+        return [
+            'key' => 'belum_hadir',
+            'label' => 'Tidak Hadir (Alpa)',
+            'badge_class' => 'bg-rose-100 text-rose-900 border-rose-300',
+            'badge_icon' => '❌',
+        ];
+    }
+
     public function index(Request $request)
     {
         $selectedDate = $request->query('tanggal', Carbon::today('Asia/Jayapura')->format('Y-m-d'));
@@ -36,20 +97,33 @@ class RekapController extends Controller
         $students = $query->orderBy('kelas_id', 'asc')->get();
         $attendance = Absensi::whereDate('waktu_scan', $targetDate)->get()->groupBy('siswa_id');
 
-        $rekap = $students->map(function ($s) use ($attendance) {
+        $hadirLengkapCount = 0;
+        $terlambatCount = 0;
+        $tidakAbsenPulangCount = 0;
+        $diSekolahCount = 0;
+        $alpaCount = 0;
+
+        $rekap = $students->map(function ($s) use ($attendance, $targetDate, &$hadirLengkapCount, &$terlambatCount, &$tidakAbsenPulangCount, &$diSekolahCount, &$alpaCount) {
             $records = $attendance->get($s->id, collect());
             $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
             $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
 
-            $status = 'belum_hadir';
-            if ($pulang) $status = 'sudah_pulang';
-            elseif ($masuk) $status = $masuk->status;
+            $eval = $this->evaluateAttendanceStatus($masuk, $pulang, $targetDate);
+
+            if ($eval['key'] === 'sudah_pulang') $hadirLengkapCount++;
+            elseif ($eval['key'] === 'terlambat_pulang') $terlambatCount++;
+            elseif ($eval['key'] === 'tidak_absen_pulang') $tidakAbsenPulangCount++;
+            elseif ($eval['key'] === 'di_sekolah') $diSekolahCount++;
+            elseif ($eval['key'] === 'belum_hadir') $alpaCount++;
 
             return (object) [
                 'name' => $s->user->name ?? 'Siswa',
                 'nisn' => $s->nisn ?? $s->user->nis ?? '-',
                 'kelas' => $s->kelas->nama_kelas ?? '-',
-                'status' => $status,
+                'status_key' => $eval['key'],
+                'status_label' => $eval['label'],
+                'badge_class' => $eval['badge_class'],
+                'badge_icon' => $eval['badge_icon'],
                 'jam_masuk' => $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') : '-',
                 'jam_pulang' => $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') : '-',
             ];
@@ -57,7 +131,16 @@ class RekapController extends Controller
 
         $kelasList = Kelas::orderBy('nama_kelas', 'asc')->get();
 
-        return view('satpam.rekap', compact('rekap', 'kelasList', 'kelasId', 'search', 'selectedDate'));
+        $stats = [
+            'total' => $students->count(),
+            'hadir_lengkap' => $hadirLengkapCount,
+            'terlambat' => $terlambatCount,
+            'tidak_absen_pulang' => $tidakAbsenPulangCount,
+            'di_sekolah' => $diSekolahCount,
+            'alpa' => $alpaCount,
+        ];
+
+        return view('satpam.rekap', compact('rekap', 'kelasList', 'kelasId', 'search', 'selectedDate', 'stats'));
     }
 
     /**
@@ -99,12 +182,12 @@ class RekapController extends Controller
             $file = fopen('php://output', 'w');
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
 
-            fputcsv($file, ['LAPORAN REKAPITULASI PRESENSI GERBANG SEKOLAH']);
+            fputcsv($file, ['LAPORAN REKAPITULASI PRESENSI GERBANG KEAMANAN']);
             fputcsv($file, ['SMA NEGERI 5 KABUPATEN PULAU MOROTAI']);
-            fputcsv($file, ['Tanggal', Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y')]);
+            fputcsv($file, ['Tanggal Rekap', Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y')]);
             fputcsv($file, []);
 
-            fputcsv($file, ['No', 'Nama Siswa', 'NIS / NISN', 'Kelas', 'Jam Masuk', 'Jam Pulang', 'Status Kehadiran']);
+            fputcsv($file, ['No', 'Nama Siswa', 'NIS / NISN', 'Kelas', 'Jam Masuk', 'Jam Pulang', 'Status Kehadiran & Kepulangan']);
 
             $no = 1;
             foreach ($students as $s) {
@@ -112,11 +195,7 @@ class RekapController extends Controller
                 $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
                 $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
 
-                $statusLabel = 'Belum Hadir';
-                if ($pulang) $statusLabel = 'Sudah Pulang';
-                elseif ($masuk) {
-                    $statusLabel = $masuk->status === 'terlambat' ? 'Terlambat' : 'Hadir Tepat Waktu';
-                }
+                $eval = $this->evaluateAttendanceStatus($masuk, $pulang, $targetDate);
 
                 fputcsv($file, [
                     $no++,
@@ -125,7 +204,7 @@ class RekapController extends Controller
                     $s->kelas->nama_kelas ?? '-',
                     $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') . ' WIT' : '-',
                     $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') . ' WIT' : '-',
-                    $statusLabel,
+                    $eval['label'],
                 ]);
             }
 
@@ -161,10 +240,11 @@ class RekapController extends Controller
         $students = $query->orderBy('kelas_id', 'asc')->get();
         $attendance = Absensi::whereDate('waktu_scan', $targetDate)->get()->groupBy('siswa_id');
 
-        $hadirCount = 0;
+        $hadirLengkapCount = 0;
         $terlambatCount = 0;
-        $pulangCount = 0;
-        $belumHadirCount = 0;
+        $tidakAbsenPulangCount = 0;
+        $diSekolahCount = 0;
+        $alpaCount = 0;
 
         $rows = [];
         $no = 1;
@@ -173,21 +253,13 @@ class RekapController extends Controller
             $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
             $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
 
-            $statusText = 'BELUM HADIR';
-            if ($pulang) {
-                $statusText = 'SUDAH PULANG';
-                $pulangCount++;
-            } elseif ($masuk) {
-                if ($masuk->status === 'terlambat') {
-                    $statusText = 'TERLAMBAT';
-                    $terlambatCount++;
-                } else {
-                    $statusText = 'HADIR';
-                    $hadirCount++;
-                }
-            } else {
-                $belumHadirCount++;
-            }
+            $eval = $this->evaluateAttendanceStatus($masuk, $pulang, $targetDate);
+
+            if ($eval['key'] === 'sudah_pulang') $hadirLengkapCount++;
+            elseif ($eval['key'] === 'terlambat_pulang') $terlambatCount++;
+            elseif ($eval['key'] === 'tidak_absen_pulang') $tidakAbsenPulangCount++;
+            elseif ($eval['key'] === 'di_sekolah') $diSekolahCount++;
+            elseif ($eval['key'] === 'belum_hadir') $alpaCount++;
 
             $rows[] = [
                 'no' => $no++,
@@ -196,7 +268,8 @@ class RekapController extends Controller
                 'kelas' => $s->kelas->nama_kelas ?? '-',
                 'jam_masuk' => $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') . ' WIT' : '-',
                 'jam_pulang' => $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') . ' WIT' : '-',
-                'status' => $statusText,
+                'status' => strtoupper($eval['label']),
+                'status_key' => $eval['key'],
             ];
         }
 
@@ -205,7 +278,7 @@ class RekapController extends Controller
         $officerName = auth()->user()->name ?? 'Petugas Satpam';
 
         return view('satpam.print_rekap', compact(
-            'rows', 'totalSiswa', 'hadirCount', 'terlambatCount', 'pulangCount', 'belumHadirCount', 'formattedDate', 'officerName'
+            'rows', 'totalSiswa', 'hadirLengkapCount', 'terlambatCount', 'tidakAbsenPulangCount', 'diSekolahCount', 'alpaCount', 'formattedDate', 'officerName'
         ));
     }
 }

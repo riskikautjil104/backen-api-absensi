@@ -41,6 +41,34 @@
                     </a>
                 </form>
             </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-slate-100 text-center">
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span class="text-[11px] font-bold text-slate-500 block">TOTAL SISWA</span>
+                    <span class="text-xl font-black text-slate-900">{{ $stats['total'] }}</span>
+                </div>
+                <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <span class="text-[11px] font-bold text-emerald-600 block">HADIR & PULANG</span>
+                    <span class="text-xl font-black text-emerald-700">{{ $stats['hadir_lengkap'] }}</span>
+                </div>
+                <div class="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                    <span class="text-[11px] font-bold text-amber-600 block">TERLAMBAT</span>
+                    <span class="text-xl font-black text-amber-700">{{ $stats['terlambat'] }}</span>
+                </div>
+                <div class="p-3 bg-sky-50 rounded-xl border border-sky-100">
+                    <span class="text-[11px] font-bold text-sky-600 block">DI SEKOLAH</span>
+                    <span class="text-xl font-black text-sky-700">{{ $stats['di_sekolah'] }}</span>
+                </div>
+                <div class="p-3 bg-purple-50 rounded-xl border border-purple-100">
+                    <span class="text-[11px] font-bold text-purple-600 block">TIDAK ABSEN PULANG</span>
+                    <span class="text-xl font-black text-purple-700">{{ $stats['tidak_absen_pulang'] }}</span>
+                </div>
+                <div class="p-3 bg-rose-50 rounded-xl border border-rose-100">
+                    <span class="text-[11px] font-bold text-rose-600 block">TIDAK HADIR</span>
+                    <span class="text-xl font-black text-rose-700">{{ $stats['alpa'] }}</span>
+                </div>
+            </div>
         </div>
 
         <!-- Attendance List -->
@@ -54,7 +82,7 @@
                         <th class="py-3.5 px-5">Kelas</th>
                         <th class="py-3.5 px-5">Jam Masuk</th>
                         <th class="py-3.5 px-5">Jam Pulang</th>
-                        <th class="py-3.5 px-5">Status Kehadiran</th>
+                        <th class="py-3.5 px-5">Status Kehadiran & Kepulangan</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -67,15 +95,10 @@
                             <td class="py-3.5 px-5 font-mono text-xs font-semibold text-slate-700">{{ $item->jam_masuk !== '-' ? $item->jam_masuk . ' WIT' : '-' }}</td>
                             <td class="py-3.5 px-5 font-mono text-xs font-semibold text-slate-700">{{ $item->jam_pulang !== '-' ? $item->jam_pulang . ' WIT' : '-' }}</td>
                             <td class="py-3.5 px-5">
-                                @if($item->status === 'hadir')
-                                    <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">✅ Hadir Tepat Waktu</span>
-                                @elseif($item->status === 'terlambat')
-                                    <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800">⚠️ Terlambat</span>
-                                @elseif($item->status === 'sudah_pulang')
-                                    <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-sky-100 text-sky-800">🏠 Sudah Pulang</span>
-                                @else
-                                    <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-rose-100 text-rose-800">❌ Belum Hadir</span>
-                                @endif
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border {{ $item->badge_class }}">
+                                    <span>{{ $item->badge_icon }}</span>
+                                    <span>{{ $item->status_label }}</span>
+                                </span>
                             </td>
                         </tr>
                     @empty

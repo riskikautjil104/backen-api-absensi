@@ -59,11 +59,12 @@
 
     <!-- Ringkasan Statistik -->
     <div class="summary-box">
-        <div class="summary-item">Total Siswa: <strong>{{ $totalSiswa }}</strong></div>
-        <div class="summary-item" style="color: #059669;">Tepat Waktu: <strong>{{ $hadirCount }}</strong></div>
+        <div class="summary-item">Total: <strong>{{ $totalSiswa }}</strong></div>
+        <div class="summary-item" style="color: #059669;">Hadir & Pulang: <strong>{{ $hadirLengkapCount }}</strong></div>
         <div class="summary-item" style="color: #d97706;">Terlambat: <strong>{{ $terlambatCount }}</strong></div>
-        <div class="summary-item" style="color: #0284c7;">Sudah Pulang: <strong>{{ $pulangCount }}</strong></div>
-        <div class="summary-item" style="color: #dc2626;">Belum Hadir: <strong>{{ $belumHadirCount }}</strong></div>
+        <div class="summary-item" style="color: #0284c7;">Di Sekolah: <strong>{{ $diSekolahCount }}</strong></div>
+        <div class="summary-item" style="color: #7e22ce;">Tidak Absen Pulang: <strong>{{ $tidakAbsenPulangCount }}</strong></div>
+        <div class="summary-item" style="color: #dc2626;">Tidak Hadir: <strong>{{ $alpaCount }}</strong></div>
     </div>
 
     <!-- Tabel Rekap -->
@@ -76,7 +77,7 @@
                 <th style="width: 60px;">Kelas</th>
                 <th style="width: 80px;">Jam Masuk</th>
                 <th style="width: 80px;">Jam Pulang</th>
-                <th style="width: 110px;">Status</th>
+                <th style="width: 140px;">Status Kehadiran</th>
             </tr>
         </thead>
         <tbody>
@@ -89,14 +90,16 @@
                     <td class="text-center">{{ $r['jam_masuk'] }}</td>
                     <td class="text-center">{{ $r['jam_pulang'] }}</td>
                     <td class="text-center status-badge">
-                        @if($r['status'] === 'HADIR')
-                            <span style="color: #059669;">HADIR</span>
-                        @elseif($r['status'] === 'TERLAMBAT')
-                            <span style="color: #d97706;">TERLAMBAT</span>
-                        @elseif($r['status'] === 'SUDAH PULANG')
-                            <span style="color: #0284c7;">SUDAH PULANG</span>
+                        @if($r['status_key'] === 'sudah_pulang')
+                            <span style="color: #059669;">HADIR (SUDAH PULANG)</span>
+                        @elseif($r['status_key'] === 'terlambat_pulang')
+                            <span style="color: #d97706;">TERLAMBAT (SUDAH PULANG)</span>
+                        @elseif($r['status_key'] === 'tidak_absen_pulang')
+                            <span style="color: #7e22ce; font-weight: bold;">TIDAK ABSEN PULANG (BOLOS)</span>
+                        @elseif($r['status_key'] === 'di_sekolah')
+                            <span style="color: #0284c7;">MASIH DI SEKOLAH</span>
                         @else
-                            <span style="color: #dc2626;">BELUM HADIR</span>
+                            <span style="color: #dc2626;">TIDAK HADIR (ALPA)</span>
                         @endif
                     </td>
                 </tr>
