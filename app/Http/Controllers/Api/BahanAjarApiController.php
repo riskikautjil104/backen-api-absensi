@@ -52,8 +52,8 @@ class BahanAjarApiController extends Controller
         $data = $items->map(function ($item) {
             $totalStudents = Siswa::where('kelas_id', $item->kelas_id)->count();
             $evaluasi = $item->evaluasi;
-            $submittedCount = $evaluasi ? $evaluasi->jawaban->count() : 0;
-            $gradedCount = $evaluasi ? $evaluasi->jawaban->where('status', 'dinilai')->count() : 0;
+            $submittedCount = ($evaluasi && $evaluasi->jawaban) ? $evaluasi->jawaban->count() : 0;
+            $gradedCount = ($evaluasi && $evaluasi->jawaban) ? $evaluasi->jawaban->where('status', 'dinilai')->count() : 0;
 
             return [
                 'id' => $item->id,
@@ -418,13 +418,25 @@ class BahanAjarApiController extends Controller
     public function siswaIndex(Request $request)
     {
         $user = $request->user();
-        $siswa = Siswa::where('user_id', $user->id)->first();
+        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
+
+        // Auto-provision siswa record if missing
+        if (!$siswa) {
+            $defaultClassId = Kelas::value('id');
+            $siswa = Siswa::create([
+                'user_id' => $user->id,
+                'kelas_id' => $defaultClassId,
+            ]);
+        }
 
         $query = BahanAjar::with(['guru', 'kelas', 'mapel', 'evaluasi.jawaban'])
             ->where('status', 'aktif');
 
         if ($siswa && $siswa->kelas_id) {
-            $query->where('kelas_id', $siswa->kelas_id);
+            $query->where(function($q) use ($siswa) {
+                $q->where('kelas_id', $siswa->kelas_id)
+                  ->orWhereNull('kelas_id');
+            });
         }
 
         if ($request->filled('mapel_id')) {
@@ -433,10 +445,18 @@ class BahanAjarApiController extends Controller
 
         $items = $query->orderBy('id', 'desc')->get();
 
+        // If class filter returned empty but there are active materials, fallback to all active materials
+        if ($items->isEmpty()) {
+            $items = BahanAjar::with(['guru', 'kelas', 'mapel', 'evaluasi.jawaban'])
+                ->where('status', 'aktif')
+                ->orderBy('id', 'desc')
+                ->get();
+        }
+
         $data = $items->map(function ($item) use ($siswa) {
             $evaluasi = $item->evaluasi;
             $myJawaban = null;
-            if ($evaluasi && $siswa) {
+            if ($evaluasi && $siswa && $evaluasi->jawaban) {
                 $myJawaban = $evaluasi->jawaban->firstWhere('siswa_id', $siswa->id);
             }
 
