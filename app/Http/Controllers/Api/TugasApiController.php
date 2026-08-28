@@ -124,25 +124,41 @@ class TugasApiController extends Controller
             'status' => 'aktif',
         ]);
 
-        // Push Notification ke semua siswa di kelas yang dituju
+        // Push Notification ke semua siswa di kelas yang dituju & broadcast topic siswa
         try {
             $students = Siswa::where('kelas_id', $request->kelas_id)->with('user')->get();
             $tokens = $students->pluck('user.fcm_token')->filter()->values()->toArray();
+            
+            // Backup: ambil seluruh token siswa yang aktif jika token per-kelas belum sinkron
+            if (empty($tokens)) {
+                $tokens = User::where('role', 'siswa')->whereNotNull('fcm_token')->pluck('fcm_token')->toArray();
+            }
+
             $mapelName = MataPelajaran::where('id', $request->mapel_id)->value('nama_mapel') ?? 'Pelajaran';
             $deadlineStr = $tugas->deadline ? Carbon::parse($tugas->deadline)->locale('id')->isoFormat('D MMM Y, HH:mm') . ' WIT' : 'Fleksibel';
 
+            $notifTitle = "📚 Tugas Baru: {$mapelName}";
+            $notifBody = "{$user->name} memberikan tugas baru \"{$tugas->judul}\". Tenggat: {$deadlineStr}";
+            $notifData = [
+                'type' => 'new_tugas',
+                'tugas_id' => (string)$tugas->id,
+                'kelas_id' => (string)$request->kelas_id,
+            ];
+
+            // 1. Kirim langsung ke token perangkat siswa
             if (!empty($tokens)) {
                 $this->fcmService->sendToMultiple(
                     $tokens,
-                    "📚 Tugas Baru: {$mapelName}",
-                    "{$user->name} memberikan tugas baru \"{$tugas->judul}\". Tenggat: {$deadlineStr}",
-                    [
-                        'type' => 'new_tugas',
-                        'tugas_id' => (string)$tugas->id,
-                        'kelas_id' => (string)$request->kelas_id,
-                    ]
+                    $notifTitle,
+                    $notifBody,
+                    $notifData
                 );
             }
+
+            // 2. Broadcast juga ke topic kelas dan topic siswa untuk jaminan sampai 100%
+            $this->fcmService->sendToTopic("kelas_{$request->kelas_id}", $notifTitle, $notifBody, $notifData);
+            $this->fcmService->sendToTopic("siswa", $notifTitle, $notifBody, $notifData);
+
         } catch (\Throwable $e) {
             Log::warning('Gagal kirim FCM new_tugas: ' . $e->getMessage());
         }
@@ -262,10 +278,11 @@ class TugasApiController extends Controller
 
         // Kirim Push Notification ke Siswa bahwa tugas telah dinilai
         try {
-            if ($siswa->user?->fcm_token) {
+            $studentToken = $siswa->user?->fcm_token ?? User::where('id', $siswa->user_id)->value('fcm_token');
+            if ($studentToken) {
                 $mapelName = $tugas->mapel?->nama_mapel ?? 'Mata Pelajaran';
                 $this->fcmService->sendToDevice(
-                    $siswa->user->fcm_token,
+                    $studentToken,
                     "🌟 Tugas Dinilai: {$mapelName}",
                     "Tugas \"{$tugas->judul}\" telah dinilai oleh {$user->name}. Nilai Anda: {$request->nilai}/{$tugas->poin_maksimal}",
                     [
@@ -574,10 +591,11 @@ class TugasApiController extends Controller
 
         // Push Notification ke Guru bahwa siswa telah mengumpulkan tugas
         try {
-            if ($tugas->guru?->fcm_token) {
+            $teacherToken = $tugas->guru?->fcm_token ?? User::where('id', $tugas->guru_id)->value('fcm_token');
+            if ($teacherToken) {
                 $statusText = $isLate ? '(Terlambat)' : '(Tepat Waktu)';
                 $this->fcmService->sendToDevice(
-                    $tugas->guru->fcm_token,
+                    $teacherToken,
                     "📥 Tugas Dikumpulkan: {$user->name}",
                     "{$user->name} (NIS: {$user->nis}) telah mengumpulkan tugas \"{$tugas->judul}\" {$statusText}.",
                     [
