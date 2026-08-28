@@ -386,20 +386,36 @@ class TugasApiController extends Controller
     public function siswaList(Request $request)
     {
         $user = $request->user();
-        $siswa = $user->siswa;
+        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
 
+        // Auto-provision siswa record if missing
         if (!$siswa) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data siswa tidak ditemukan.',
-            ], 404);
+            $defaultClassId = Kelas::value('id');
+            $siswa = Siswa::create([
+                'user_id' => $user->id,
+                'kelas_id' => $defaultClassId,
+            ]);
         }
 
-        $allTugas = Tugas::with(['guru', 'mapel', 'kelas'])
-            ->where('kelas_id', $siswa->kelas_id)
-            ->where('status', 'aktif')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $query = Tugas::with(['guru', 'mapel', 'kelas'])
+            ->where('status', 'aktif');
+
+        if ($siswa && $siswa->kelas_id) {
+            $query->where(function($q) use ($siswa) {
+                $q->where('kelas_id', $siswa->kelas_id)
+                  ->orWhereNull('kelas_id');
+            });
+        }
+
+        $allTugas = $query->orderBy('created_at', 'desc')->get();
+
+        // If class filter returned empty but there are active tasks, fallback to all active tasks
+        if ($allTugas->isEmpty()) {
+            $allTugas = Tugas::with(['guru', 'mapel', 'kelas'])
+                ->where('status', 'aktif')
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
 
         $tugasIdList = $allTugas->pluck('id')->toArray();
         $mySubmissions = PengumpulanTugas::whereIn('tugas_id', $tugasIdList)
@@ -457,15 +473,17 @@ class TugasApiController extends Controller
     public function siswaShow(Request $request, $id)
     {
         $user = $request->user();
-        $siswa = $user->siswa;
+        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
 
         if (!$siswa) {
-            return response()->json(['success' => false, 'message' => 'Data siswa tidak ditemukan.'], 404);
+            $defaultClassId = Kelas::value('id');
+            $siswa = Siswa::create([
+                'user_id' => $user->id,
+                'kelas_id' => $defaultClassId,
+            ]);
         }
 
-        $tugas = Tugas::with(['guru', 'mapel', 'kelas'])
-            ->where('kelas_id', $siswa->kelas_id)
-            ->findOrFail($id);
+        $tugas = Tugas::with(['guru', 'mapel', 'kelas'])->findOrFail($id);
 
         $sub = PengumpulanTugas::where('tugas_id', $id)
             ->where('siswa_id', $siswa->id)
@@ -519,13 +537,17 @@ class TugasApiController extends Controller
         ]);
 
         $user = $request->user();
-        $siswa = $user->siswa;
+        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
 
         if (!$siswa) {
-            return response()->json(['success' => false, 'message' => 'Data siswa tidak ditemukan.'], 404);
+            $defaultClassId = Kelas::value('id');
+            $siswa = Siswa::create([
+                'user_id' => $user->id,
+                'kelas_id' => $defaultClassId,
+            ]);
         }
 
-        $tugas = Tugas::with('guru', 'mapel')->where('kelas_id', $siswa->kelas_id)->findOrFail($id);
+        $tugas = Tugas::with('guru', 'mapel')->findOrFail($id);
 
         $now = Carbon::now('Asia/Jayapura');
         $isLate = $tugas->deadline && $now->isAfter(Carbon::parse($tugas->deadline));
