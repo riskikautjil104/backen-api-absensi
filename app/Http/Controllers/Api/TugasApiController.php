@@ -181,10 +181,18 @@ class TugasApiController extends Controller
             ->where('guru_id', $user->id)
             ->findOrFail($id);
 
-        // Fetch all students in the class
-        $students = Siswa::where('kelas_id', $tugas->kelas_id)->with('user')->get();
+        // Fetch all students in the class PLUS any student who has submitted this task
+        $classStudentIds = Siswa::where('kelas_id', $tugas->kelas_id)->pluck('id');
+        $submittedStudentIds = PengumpulanTugas::where('tugas_id', $tugas->id)->pluck('siswa_id');
+        $allStudentIds = $classStudentIds->merge($submittedStudentIds)->unique()->filter();
 
-        $submissionMap = $tugas->pengumpulan->keyBy('siswa_id');
+        $students = Siswa::whereIn('id', $allStudentIds)->with('user')->get();
+
+        if ($students->isEmpty()) {
+            $students = Siswa::with('user')->get();
+        }
+
+        $submissionMap = PengumpulanTugas::where('tugas_id', $tugas->id)->get()->keyBy('siswa_id');
 
         $studentList = $students->map(function ($s) use ($submissionMap, $tugas) {
             $sub = $submissionMap->get($s->id);
