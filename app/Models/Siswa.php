@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Siswa extends Model
 {
     protected $table = 'siswa';
-    protected $fillable = ['user_id', 'kelas_id', 'jenis_kelamin', 'tempat_lahir', 'tanggal_lahir', 'nomor_hp', 'wa_orang_tua', 'alamat'];
+    protected $fillable = ['user_id', 'kelas_id', 'nisn', 'jenis_kelamin', 'tempat_lahir', 'tanggal_lahir', 'nomor_hp', 'wa_orang_tua', 'alamat'];
 
     public function getRouteKey()
     {

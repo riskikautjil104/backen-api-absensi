@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Siswa;
+use App\Models\Kelas;
+use App\Models\KartuSiswa;
 use App\Models\Jadwal;
 use App\Models\Absensi;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Carbon\Carbon;
 
 class SiswaApiController extends Controller
@@ -420,58 +423,86 @@ class SiswaApiController extends Controller
      */
     public function getKartuDigital(Request $request)
     {
-        $user = $request->user();
-        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated.'], 401);
+            }
 
-        if (!$siswa) {
-            $defaultClassId = Kelas::value('id');
-            $siswa = Siswa::create([
-                'user_id' => $user->id,
-                'kelas_id' => $defaultClassId,
-            ]);
-        }
+            $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
 
-        $kartu = $siswa->kartu;
-        if (!$kartu) {
-            $token = 'SMAN5-' . strtoupper(substr(md5($user->id . '_' . time()), 0, 10));
-            $kartu = KartuSiswa::create([
-                'siswa_id' => $siswa->id,
-                'token' => $token,
-                'status' => 'aktif',
-            ]);
-        }
+            if (!$siswa) {
+                $defaultClassId = Kelas::value('id') ?? 1;
+                $siswa = Siswa::create([
+                    'user_id' => $user->id,
+                    'kelas_id' => $defaultClassId,
+                ]);
+            }
 
-        $encryptedToken = Crypt::encryptString($kartu->token);
+            $kartu = $siswa->kartu;
+            if (!$kartu) {
+                $token = 'SMAN5-' . strtoupper(substr(md5($user->id . '_' . time()), 0, 10));
+                $kartu = KartuSiswa::create([
+                    'siswa_id' => $siswa->id,
+                    'token' => $token,
+                    'status' => 'aktif',
+                ]);
+            }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Data kartu pelajar digital berhasil dimuat.',
-            'data' => [
-                'card_id' => $kartu->id,
-                'token' => $kartu->token,
-                'encrypted_token' => $encryptedToken,
-                'student' => [
-                    'id' => $siswa->id,
-                    'name' => $user->name,
-                    'nisn' => $siswa->nisn ?? $user->nis ?? '-',
-                    'nis' => $user->nis ?? '-',
-                    'class_name' => $siswa->kelas->nama_kelas ?? 'X-1',
-                    'tahun_ajaran' => $siswa->kelas->tahun_ajaran ?? '2025/2026',
-                    'foto' => $user->foto ? url('storage/' . $user->foto) : null,
-                    'tempat_lahir' => $siswa->tempat_lahir ?? 'Morotai',
-                    'tanggal_lahir' => $siswa->tanggal_lahir ? Carbon::parse($siswa->tanggal_lahir)->locale('id')->isoFormat('D MMMM Y') : '-',
-                    'jenis_kelamin' => $siswa->jenis_kelamin ?? 'L',
-                    'alamat' => $siswa->alamat ?? 'Kabupaten Pulau Morotai',
+            $encryptedToken = Crypt::encryptString($kartu->token);
+
+            $kelasName = 'X-1';
+            $tahunAjaran = '2025/2026';
+            if ($siswa->kelas) {
+                $kelasName = $siswa->kelas->nama_kelas ?? 'X-1';
+                $tahunAjaran = $siswa->kelas->tahun_ajaran ?? '2025/2026';
+            }
+
+            $tglLahir = '-';
+            if (!empty($siswa->tanggal_lahir)) {
+                try {
+                    $tglLahir = Carbon::parse($siswa->tanggal_lahir)->locale('id')->isoFormat('D MMMM Y');
+                } catch (\Throwable $e) {
+                    $tglLahir = (string) $siswa->tanggal_lahir;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data kartu pelajar digital berhasil dimuat.',
+                'data' => [
+                    'card_id' => $kartu->id,
+                    'token' => $kartu->token,
+                    'encrypted_token' => $encryptedToken,
+                    'student' => [
+                        'id' => $siswa->id,
+                        'name' => $user->name,
+                        'nisn' => $siswa->nisn ?? $user->nis ?? '-',
+                        'nis' => $user->nis ?? '-',
+                        'class_name' => $kelasName,
+                        'tahun_ajaran' => $tahunAjaran,
+                        'foto' => $user->foto ? url('storage/' . $user->foto) : null,
+                        'tempat_lahir' => $siswa->tempat_lahir ?? 'Morotai',
+                        'tanggal_lahir' => $tglLahir,
+                        'jenis_kelamin' => $siswa->jenis_kelamin ?? 'L',
+                        'alamat' => $siswa->alamat ?? 'Kabupaten Pulau Morotai',
+                    ],
+                    'school' => [
+                        'name' => 'SMA NEGERI 5 PULAU MOROTAI',
+                        'npsn' => '69900000',
+                        'address' => 'Kabupaten Pulau Morotai, Maluku Utara',
+                        'valid_until' => '12/2028',
+                    ],
+                    'status' => $kartu->status ?? 'aktif',
                 ],
-                'school' => [
-                    'name' => 'SMA NEGERI 5 PULAU MOROTAI',
-                    'npsn' => '69900000',
-                    'address' => 'Kabupaten Pulau Morotai, Maluku Utara',
-                    'valid_until' => '12/2028',
-                ],
-                'status' => $kartu->status,
-            ],
-        ]);
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error getKartuDigital: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memuat kartu: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
