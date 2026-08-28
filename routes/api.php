@@ -80,6 +80,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/satpam/rekap-harian', [SatpamApiController::class, 'rekapHarian']);
     Route::get('/satpam/rekap/export-excel', [SatpamApiController::class, 'exportRekapExcel']);
     Route::get('/satpam/rekap/export-pdf', [SatpamApiController::class, 'exportRekapPdf']);
+    Route::get('/satpam/jam-operasional', [SatpamApiController::class, 'getJamOperasional']);
+    Route::post('/satpam/jam-operasional', [SatpamApiController::class, 'updateJamOperasional']);
     Route::post('/satpam/device-token', [SatpamApiController::class, 'updateDeviceToken']);
     // akhir batas suci yang kamu ubah
 });

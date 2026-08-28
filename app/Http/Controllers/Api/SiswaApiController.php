@@ -10,6 +10,7 @@ use App\Models\Kelas;
 use App\Models\KartuSiswa;
 use App\Models\Jadwal;
 use App\Models\Absensi;
+use App\Models\JamOperasionalGerbang;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -600,10 +601,13 @@ class SiswaApiController extends Controller
             ], 409);
         }
 
-        // Hitung status
+        // Hitung status menggunakan jam operasional gerbang hari ini
         $status = 'hadir';
         if ($tipeTarget === 'gerbang_masuk') {
-            $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour(7)->setMinute(30)->setSecond(0);
+            $schedule = JamOperasionalGerbang::getScheduleForDate($now);
+            $batasMasukStr = $schedule ? $schedule->jam_masuk_batas : '07:30';
+            [$bHour, $bMin] = explode(':', $batasMasukStr);
+            $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour((int)$bHour)->setMinute((int)$bMin)->setSecond(0);
             $status = $now->isAfter($jamMasukLimit) ? 'terlambat' : 'hadir';
         }
 

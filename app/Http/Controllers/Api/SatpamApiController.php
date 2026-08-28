@@ -11,6 +11,7 @@ use App\Models\Siswa;
 use App\Models\Kelas;
 use App\Models\KartuSiswa;
 use App\Models\Absensi;
+use App\Models\JamOperasionalGerbang;
 use App\Services\FcmService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Hash;
@@ -278,11 +279,13 @@ class SatpamApiController extends Controller
             ], 409);
         }
 
-        // 3. Tentukan Status Kehadiran (Tepat Waktu vs Terlambat)
-        // Batas keterlambatan masuk gerbang: 07:30 WIT
+        // 3. Tentukan Status Kehadiran (Tepat Waktu vs Terlambat) menggunakan Jam Operasional Hari Ini
         $status = 'hadir';
         if ($tipeScan === 'masuk') {
-            $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour(7)->setMinute(30)->setSecond(0);
+            $schedule = JamOperasionalGerbang::getScheduleForDate($now);
+            $batasMasukStr = $schedule ? $schedule->jam_masuk_batas : '07:30';
+            [$bHour, $bMin] = explode(':', $batasMasukStr);
+            $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour((int)$bHour)->setMinute((int)$bMin)->setSecond(0);
             if ($now->isAfter($jamMasukLimit)) {
                 $status = 'terlambat';
             }
@@ -388,7 +391,10 @@ class SatpamApiController extends Controller
         $nowWit = Carbon::now('Asia/Jayapura');
         $isToday = $targetDate->isToday();
         $isPastDate = $targetDate->isPast() && !$isToday;
-        $jamPulangLimit = Carbon::today('Asia/Jayapura')->setHour(14)->setMinute(0)->setSecond(0);
+        $schedule = JamOperasionalGerbang::getScheduleForDate($targetDate);
+        $jamPulangStr = $schedule ? $schedule->jam_pulang_mulai : '14:00';
+        [$pHour, $pMin] = explode(':', $jamPulangStr);
+        $jamPulangLimit = Carbon::parse($targetDate->format('Y-m-d'), 'Asia/Jayapura')->setHour((int)$pHour)->setMinute((int)$pMin)->setSecond(0);
         $isAfterDismissal = $isToday ? $nowWit->isAfter($jamPulangLimit) : true;
 
         $hasMasuk = $masukRecord !== null;
@@ -684,6 +690,81 @@ class SatpamApiController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'FCM Device Token Satpam berhasil diperbarui.',
+        ]);
+    }
+
+    /**
+     * Mengambil daftar jadwal jam operasional gerbang untuk 7 hari
+     * GET /api/satpam/jam-operasional
+     */
+    public function getJamOperasional(Request $request)
+    {
+        JamOperasionalGerbang::ensureTableAndData();
+
+        $schedules = JamOperasionalGerbang::orderBy('urutan', 'asc')->get();
+        $todaySchedule = JamOperasionalGerbang::getScheduleForDate();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Jadwal jam operasional pos gerbang berhasil dimuat.',
+            'data' => [
+                'schedules' => $schedules,
+                'today_active' => $todaySchedule,
+                'server_time' => Carbon::now('Asia/Jayapura')->locale('id')->isoFormat('dddd, D MMMM Y • HH:mm:ss') . ' WIT',
+            ],
+        ]);
+    }
+
+    /**
+     * Menyimpan / Memperbarui Jadwal Jam Operasional Pos Gerbang
+     * POST /api/satpam/jam-operasional
+     */
+    public function updateJamOperasional(Request $request)
+    {
+        JamOperasionalGerbang::ensureTableAndData();
+
+        $user = $request->user();
+
+        // Bisa update multiple hari (array) atau 1 hari
+        if ($request->has('schedules') && is_array($request->schedules)) {
+            foreach ($request->schedules as $item) {
+                if (isset($item['hari'])) {
+                    JamOperasionalGerbang::where('hari', $item['hari'])->update([
+                        'jam_masuk_mulai' => $item['jam_masuk_mulai'] ?? '06:00',
+                        'jam_masuk_batas' => $item['jam_masuk_batas'] ?? '07:30',
+                        'jam_pulang_mulai' => $item['jam_pulang_mulai'] ?? '14:00',
+                        'is_libur' => filter_var($item['is_libur'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                        'keterangan' => $item['keterangan'] ?? null,
+                        'updated_by' => $user->id,
+                    ]);
+                }
+            }
+        } elseif ($request->has('hari')) {
+            $request->validate([
+                'hari' => 'required|string',
+                'jam_masuk_batas' => 'required|string',
+                'jam_pulang_mulai' => 'required|string',
+            ]);
+
+            JamOperasionalGerbang::where('hari', $request->hari)->update([
+                'jam_masuk_mulai' => $request->jam_masuk_mulai ?? '06:00',
+                'jam_masuk_batas' => $request->jam_masuk_batas,
+                'jam_pulang_mulai' => $request->jam_pulang_mulai,
+                'is_libur' => $request->boolean('is_libur', false),
+                'keterangan' => $request->keterangan,
+                'updated_by' => $user->id,
+            ]);
+        }
+
+        $updatedSchedules = JamOperasionalGerbang::orderBy('urutan', 'asc')->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pengaturan jam operasional gerbang berhasil disimpan!',
+            'data' => [
+                'schedules' => $updatedSchedules,
+                'today_active' => JamOperasionalGerbang::getScheduleForDate(),
+            ],
         ]);
     }
 }

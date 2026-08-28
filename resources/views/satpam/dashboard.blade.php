@@ -20,6 +20,9 @@
                     <a href="{{ route('satpam.rekap') }}" class="inline-flex items-center px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm backdrop-blur-sm border border-white/10 transition-all">
                         Rekap Harian
                     </a>
+                    <a href="{{ route('satpam.jam-operasional') }}" class="inline-flex items-center px-5 py-3 rounded-2xl bg-amber-500/80 hover:bg-amber-500 text-white font-bold text-sm backdrop-blur-sm border border-amber-400/30 transition-all">
+                        ⏰ Atur Jam Operasional
+                    </a>
                 </div>
             </div>
         </div>

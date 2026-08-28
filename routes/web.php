@@ -70,6 +70,8 @@ Route::middleware(['auth', 'role:satpam,admin'])->prefix('satpam')->name('satpam
     Route::get('/rekap', [App\Http\Controllers\Satpam\RekapController::class, 'index'])->name('rekap');
     Route::get('/rekap/export-excel', [App\Http\Controllers\Satpam\RekapController::class, 'exportExcel'])->name('rekap.excel');
     Route::get('/rekap/export-pdf', [App\Http\Controllers\Satpam\RekapController::class, 'exportPdf'])->name('rekap.pdf');
+    Route::get('/jam-operasional', [App\Http\Controllers\Satpam\JamOperasionalWebController::class, 'index'])->name('jam-operasional');
+    Route::post('/jam-operasional', [App\Http\Controllers\Satpam\JamOperasionalWebController::class, 'update'])->name('jam-operasional.update');
 });
 // akhir batas suci yang kamu ubah
 

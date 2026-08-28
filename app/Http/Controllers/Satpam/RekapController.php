@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use App\Models\Siswa;
 use App\Models\Kelas;
 use App\Models\Absensi;
+use App\Models\JamOperasionalGerbang;
 use Carbon\Carbon;
 
 class RekapController extends Controller
@@ -21,7 +22,10 @@ class RekapController extends Controller
         $nowWit = Carbon::now('Asia/Jayapura');
         $isToday = $targetDate->isToday();
         $isPastDate = $targetDate->isPast() && !$isToday;
-        $jamPulangLimit = Carbon::today('Asia/Jayapura')->setHour(14)->setMinute(0)->setSecond(0);
+        $schedule = JamOperasionalGerbang::getScheduleForDate($targetDate);
+        $jamPulangStr = $schedule ? $schedule->jam_pulang_mulai : '14:00';
+        [$pHour, $pMin] = explode(':', $jamPulangStr);
+        $jamPulangLimit = Carbon::parse($targetDate->format('Y-m-d'), 'Asia/Jayapura')->setHour((int)$pHour)->setMinute((int)$pMin)->setSecond(0);
         $isAfterDismissal = $isToday ? $nowWit->isAfter($jamPulangLimit) : true;
 
         $hasMasuk = $masukRecord !== null;
