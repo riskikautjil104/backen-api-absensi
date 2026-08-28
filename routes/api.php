@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\SiswaApiController;
 use App\Http\Controllers\Api\GuruApiController;
+use App\Http\Controllers\Api\TugasApiController;
 
 // Public API routes
 Route::post('/siswa/login', [SiswaApiController::class, 'login']);
@@ -24,6 +25,11 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // awal batas suci yang kamu ubah
     Route::post('/siswa/device-token', [SiswaApiController::class, 'updateDeviceToken']);
+    
+    // Siswa Tugas API
+    Route::get('/siswa/tugas', [TugasApiController::class, 'siswaList']);
+    Route::get('/siswa/tugas/{id}', [TugasApiController::class, 'siswaShow']);
+    Route::post('/siswa/tugas/{id}/kumpul', [TugasApiController::class, 'siswaSubmit']);
     // akhir batas suci yang kamu ubah
 
     // Guru Mobile API
@@ -38,5 +44,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/guru/absensi/status', [GuruApiController::class, 'updateStudentStatus']);
     Route::get('/guru/kelas/{kelas_id}/mapel/{mapel_id}/export-excel', [GuruApiController::class, 'exportAttendanceExcel']);
     Route::get('/guru/kelas/{kelas_id}/mapel/{mapel_id}/export-pdf', [GuruApiController::class, 'exportAttendancePdf']);
+    
+    // Guru Tugas API
+    Route::get('/guru/tugas', [TugasApiController::class, 'guruList']);
+    Route::post('/guru/tugas', [TugasApiController::class, 'guruStore']);
+    Route::get('/guru/tugas/{id}', [TugasApiController::class, 'guruShow']);
+    Route::delete('/guru/tugas/{id}', [TugasApiController::class, 'guruDestroy']);
+    Route::post('/guru/tugas/{tugas_id}/nilai/{siswa_id}', [TugasApiController::class, 'guruGrade']);
+    Route::get('/guru/tugas/rekap/kelas/{kelas_id}/mapel/{mapel_id}', [TugasApiController::class, 'guruRekap']);
     // akhir batas suci yang kamu ubah
 });
