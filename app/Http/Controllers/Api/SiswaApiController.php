@@ -413,5 +413,159 @@ class SiswaApiController extends Controller
             'message' => 'FCM Device Token Siswa berhasil disimpan.',
         ], 200);
     }
+
+    /**
+     * Data Kartu Pelajar Digital Siswa (Muka-Belakang & QR Code Terenkripsi)
+     * GET /api/siswa/kartu
+     */
+    public function getKartuDigital(Request $request)
+    {
+        $user = $request->user();
+        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
+
+        if (!$siswa) {
+            $defaultClassId = Kelas::value('id');
+            $siswa = Siswa::create([
+                'user_id' => $user->id,
+                'kelas_id' => $defaultClassId,
+            ]);
+        }
+
+        $kartu = $siswa->kartu;
+        if (!$kartu) {
+            $token = 'SMAN5-' . strtoupper(substr(md5($user->id . '_' . time()), 0, 10));
+            $kartu = KartuSiswa::create([
+                'siswa_id' => $siswa->id,
+                'token' => $token,
+                'status' => 'aktif',
+            ]);
+        }
+
+        $encryptedToken = Crypt::encryptString($kartu->token);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Data kartu pelajar digital berhasil dimuat.',
+            'data' => [
+                'card_id' => $kartu->id,
+                'token' => $kartu->token,
+                'encrypted_token' => $encryptedToken,
+                'student' => [
+                    'id' => $siswa->id,
+                    'name' => $user->name,
+                    'nisn' => $siswa->nisn ?? $user->nis ?? '-',
+                    'nis' => $user->nis ?? '-',
+                    'class_name' => $siswa->kelas->nama_kelas ?? 'X-1',
+                    'tahun_ajaran' => $siswa->kelas->tahun_ajaran ?? '2025/2026',
+                    'foto' => $user->foto ? url('storage/' . $user->foto) : null,
+                    'tempat_lahir' => $siswa->tempat_lahir ?? 'Morotai',
+                    'tanggal_lahir' => $siswa->tanggal_lahir ? Carbon::parse($siswa->tanggal_lahir)->locale('id')->isoFormat('D MMMM Y') : '-',
+                    'jenis_kelamin' => $siswa->jenis_kelamin ?? 'L',
+                    'alamat' => $siswa->alamat ?? 'Kabupaten Pulau Morotai',
+                ],
+                'school' => [
+                    'name' => 'SMA NEGERI 5 PULAU MOROTAI',
+                    'npsn' => '69900000',
+                    'address' => 'Kabupaten Pulau Morotai, Maluku Utara',
+                    'valid_until' => '12/2028',
+                ],
+                'status' => $kartu->status,
+            ],
+        ]);
+    }
+
+    /**
+     * Siswa Memindai QRIS Gerbang yang Ditampilkan oleh Satpam
+     * POST /api/siswa/absensi/scan-gerbang
+     */
+    public function scanGerbangQr(Request $request)
+    {
+        $request->validate([
+            'qr_payload' => 'required|string',
+            'latitude' => 'nullable|string',
+            'longitude' => 'nullable|string',
+        ]);
+
+        $user = $request->user();
+        $siswa = $user->siswa ?? Siswa::where('user_id', $user->id)->first();
+
+        if (!$siswa) {
+            return response()->json(['success' => false, 'message' => 'Data siswa tidak ditemukan.'], 404);
+        }
+
+        // Dekripsi payload QR Gerbang
+        try {
+            $decrypted = Crypt::decryptString($request->qr_payload);
+            $data = json_decode($decrypted, true);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'QR Code Gerbang tidak valid atau telah rusak.',
+            ], 400);
+        }
+
+        if (!is_array($data) || ($data['type'] ?? '') !== 'moro5_dynamic_gate_qr') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Format QR Code tidak dikenali sebagai QR Gerbang Resmi.',
+            ], 400);
+        }
+
+        $now = Carbon::now('Asia/Jayapura');
+        $today = Carbon::today('Asia/Jayapura');
+        $timestamp = $data['ts'] ?? 0;
+
+        // Cek kedaluwarsa token (maksimal 3 menit)
+        if (abs($now->timestamp - $timestamp) > 180) {
+            return response()->json([
+                'success' => false,
+                'message' => 'QR Code Gerbang telah kedaluwarsa. Silakan minta satpam me-refresh layar QR.',
+            ], 400);
+        }
+
+        // Cek apakah sudah absen gerbang hari ini
+        $existing = Absensi::where('siswa_id', $siswa->id)
+            ->whereDate('waktu_scan', $today)
+            ->where('tipe_presensi', 'gerbang_masuk')
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda sudah melakukan presensi masuk gerbang hari ini pada pukul ' . Carbon::parse($existing->waktu_scan)->format('H:i') . ' WIT.',
+            ], 409);
+        }
+
+        // Hitung status tepat waktu / terlambat
+        $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour(7)->setMinute(30)->setSecond(0);
+        $status = $now->isAfter($jamMasukLimit) ? 'terlambat' : 'hadir';
+
+        $petugasId = $data['petugas_id'] ?? null;
+        $petugasName = $data['petugas_name'] ?? 'Petugas Gerbang';
+
+        $absensi = Absensi::create([
+            'siswa_id' => $siswa->id,
+            'jadwal_id' => null,
+            'tipe_presensi' => 'gerbang_masuk',
+            'petugas_id' => $petugasId,
+            'waktu_scan' => $now,
+            'status' => $status,
+            'keterangan' => "Presensi Gerbang via QRIS ({$petugasName})",
+            'metode_scan' => 'qris_gerbang',
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Presensi gerbang sekolah berhasil dicatat!',
+            'data' => [
+                'status' => $status,
+                'time' => $now->format('H:i:s') . ' WIT',
+                'petugas' => $petugasName,
+                'keterangan' => $status === 'terlambat' ? '⚠️ Tercatat Terlambat' : '✅ Hadir Tepat Waktu',
+            ],
+        ]);
+    }
     // akhir batas suci yang kamu ubah
 }

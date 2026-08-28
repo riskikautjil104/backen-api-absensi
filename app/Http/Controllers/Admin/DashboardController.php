@@ -15,6 +15,9 @@ class DashboardController extends Controller
     {
         $stats = [
             'guru' => User::where('role', 'guru')->count(),
+            // awal batas suci yang kamu ubah
+            'satpam' => User::where('role', 'satpam')->count(),
+            // akhir batas suci yang kamu ubah
             'siswa' => Siswa::count(),
             'kelas' => Kelas::count(),
             'buku' => Buku::count(),

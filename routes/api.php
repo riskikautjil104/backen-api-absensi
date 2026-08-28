@@ -6,10 +6,14 @@ use App\Http\Controllers\Api\SiswaApiController;
 use App\Http\Controllers\Api\GuruApiController;
 use App\Http\Controllers\Api\TugasApiController;
 use App\Http\Controllers\Api\BahanAjarApiController;
+use App\Http\Controllers\Api\SatpamApiController;
 
 // Public API routes
 Route::post('/siswa/login', [SiswaApiController::class, 'login']);
 Route::post('/guru/login', [GuruApiController::class, 'login']);
+// awal batas suci yang kamu ubah
+Route::post('/satpam/login', [SatpamApiController::class, 'login']);
+// akhir batas suci yang kamu ubah
 
 // Protected API routes (Sanctum)
 Route::middleware('auth:sanctum')->group(function () {
@@ -26,6 +30,8 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // awal batas suci yang kamu ubah
     Route::post('/siswa/device-token', [SiswaApiController::class, 'updateDeviceToken']);
+    Route::get('/siswa/kartu', [SiswaApiController::class, 'getKartuDigital']);
+    Route::post('/siswa/absensi/scan-gerbang', [SiswaApiController::class, 'scanGerbangQr']);
     
     // Siswa Tugas API
     Route::get('/siswa/tugas', [TugasApiController::class, 'siswaList']);
@@ -65,5 +71,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/guru/bahan-ajar/{id}', [BahanAjarApiController::class, 'guruShow']);
     Route::delete('/guru/bahan-ajar/{id}', [BahanAjarApiController::class, 'guruDestroy']);
     Route::post('/guru/bahan-ajar/{bahan_ajar_id}/evaluasi/{siswa_id}/nilai', [BahanAjarApiController::class, 'guruGradeEvaluasi']);
+
+    // Satpam (Petugas Gerbang) Mobile API
+    Route::get('/satpam/profile', [SatpamApiController::class, 'profile']);
+    Route::get('/satpam/dashboard', [SatpamApiController::class, 'dashboard']);
+    Route::post('/satpam/scan-siswa', [SatpamApiController::class, 'scanSiswaCard']);
+    Route::get('/satpam/qr-gerbang-token', [SatpamApiController::class, 'getDynamicGateQrToken']);
+    Route::get('/satpam/rekap-harian', [SatpamApiController::class, 'rekapHarian']);
+    Route::post('/satpam/device-token', [SatpamApiController::class, 'updateDeviceToken']);
     // akhir batas suci yang kamu ubah
 });
