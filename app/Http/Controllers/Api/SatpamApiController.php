@@ -758,9 +758,12 @@ class SatpamApiController extends Controller
 
         $updatedSchedules = JamOperasionalGerbang::orderBy('urutan', 'asc')->get();
 
+        // Broadcast Push Notification ke seluruh Siswa & Guru
+        JamOperasionalGerbang::broadcastUpdateNotification($user);
+
         return response()->json([
             'success' => true,
-            'message' => 'Pengaturan jam operasional gerbang berhasil disimpan!',
+            'message' => 'Pengaturan jam operasional gerbang berhasil disimpan dan notifikasi telah disiarkan ke seluruh siswa!',
             'data' => [
                 'schedules' => $updatedSchedules,
                 'today_active' => JamOperasionalGerbang::getScheduleForDate(),

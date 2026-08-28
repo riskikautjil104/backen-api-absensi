@@ -6,7 +6,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Schema\Blueprint;
 use Carbon\Carbon;
 
@@ -119,6 +122,61 @@ class JamOperasionalGerbang extends Model
     public function updater()
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /**
+     * Broadcast notifikasi ke seluruh siswa dan guru saat jadwal gerbang diperbarui
+     */
+    public static function broadcastUpdateNotification($user = null)
+    {
+        try {
+            $fcmService = app(\App\Services\FcmService::class);
+            $schedules = self::orderBy('urutan', 'asc')->get();
+
+            $summaryLines = [];
+            foreach ($schedules as $s) {
+                if ($s->is_libur) {
+                    $summaryLines[] = "• {$s->nama_hari}: Libur";
+                } else {
+                    $ket = $s->keterangan ? " ({$s->keterangan})" : "";
+                    $summaryLines[] = "• {$s->nama_hari}: Batas Masuk {$s->jam_masuk_batas} WIT{$ket}, Pulang {$s->jam_pulang_mulai} WIT";
+                }
+            }
+
+            $seninJadwal = $schedules->firstWhere('hari', 'senin');
+            $jumatJadwal = $schedules->firstWhere('hari', 'jumat');
+            $seninStr = $seninJadwal ? "Senin s/d {$seninJadwal->jam_masuk_batas}" : "";
+            $jumatStr = $jumatJadwal ? "Jumat s/d {$jumatJadwal->jam_masuk_batas}" : "";
+
+            $notifTitle = "⏰ Informasi Jam Masuk & Pulang Sekolah";
+            $notifBody = "Jadwal batas toleransi tepat waktu diperbarui ({$seninStr}, {$jumatStr} WIT). Harap hadir sebelum jam batas gerbang!";
+
+            $notifData = [
+                'type' => 'jam_operasional_update',
+                'title' => $notifTitle,
+                'body' => $notifBody,
+                'schedule_summary' => implode("\n", $summaryLines),
+                'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+            ];
+
+            // 1. Kirim langsung ke token perangkat siswa & guru
+            $studentTokens = User::where('role', 'siswa')->whereNotNull('fcm_token')->pluck('fcm_token')->filter()->toArray();
+            $teacherTokens = User::where('role', 'guru')->whereNotNull('fcm_token')->pluck('fcm_token')->filter()->toArray();
+            $allTokens = array_values(array_unique(array_merge($studentTokens, $teacherTokens)));
+
+            if (!empty($allTokens)) {
+                $fcmService->sendToMultiple($allTokens, $notifTitle, $notifBody, $notifData);
+            }
+
+            // 2. Broadcast ke FCM topics
+            $fcmService->sendToTopic('siswa', $notifTitle, $notifBody, $notifData);
+            $fcmService->sendToTopic('guru', $notifTitle, $notifBody, $notifData);
+            $fcmService->sendToTopic('pengumuman_sekolah', $notifTitle, $notifBody, $notifData);
+
+            Log::info('[FCM Absensi] Broadcast jam operasional terkirim ke ' . count($allTokens) . ' device.');
+        } catch (\Throwable $e) {
+            Log::warning('[FCM Absensi] Gagal broadcast jam operasional: ' . $e->getMessage());
+        }
     }
 }
 

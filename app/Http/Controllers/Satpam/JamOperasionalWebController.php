@@ -39,7 +39,10 @@ class JamOperasionalWebController extends Controller
             ]);
         }
 
-        return redirect()->route('satpam.jam-operasional')->with('success', 'Pengaturan jam operasional gerbang untuk 7 hari berhasil diperbarui!');
+        // Broadcast Push Notification ke seluruh Siswa & Guru
+        JamOperasionalGerbang::broadcastUpdateNotification(auth()->user());
+
+        return redirect()->route('satpam.jam-operasional')->with('success', 'Pengaturan jam operasional gerbang untuk 7 hari berhasil diperbarui dan notifikasi telah disiarkan ke seluruh siswa!');
     }
 }
 
