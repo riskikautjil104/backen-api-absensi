@@ -381,12 +381,13 @@ class SatpamApiController extends Controller
     }
 
     /**
-     * Rekapitulasi Kehadiran Seluruh Siswa Hari Ini (Satpam)
+     * Rekapitulasi Kehadiran Seluruh Siswa Harian / Per Tanggal (Satpam)
      * GET /api/satpam/rekap-harian
      */
     public function rekapHarian(Request $request)
     {
-        $today = Carbon::today('Asia/Jayapura');
+        $selectedDate = $request->query('date') ?? $request->query('tanggal') ?? Carbon::today('Asia/Jayapura')->format('Y-m-d');
+        $targetDate = Carbon::parse($selectedDate, 'Asia/Jayapura')->startOfDay();
         $kelasId = $request->query('kelas_id');
         $search = $request->query('search');
 
@@ -408,13 +409,13 @@ class SatpamApiController extends Controller
 
         $allStudents = $siswaQuery->orderBy('kelas_id', 'asc')->get();
 
-        // Ambil seluruh catatan presensi hari ini
-        $attendanceToday = Absensi::whereDate('waktu_scan', $today)
+        // Ambil seluruh catatan presensi pada tanggal target
+        $attendanceDate = Absensi::whereDate('waktu_scan', $targetDate)
             ->get()
             ->groupBy('siswa_id');
 
-        $rekapList = $allStudents->map(function ($s) use ($attendanceToday) {
-            $studentAttendance = $attendanceToday->get($s->id, collect());
+        $rekapList = $allStudents->map(function ($s) use ($attendanceDate) {
+            $studentAttendance = $attendanceDate->get($s->id, collect());
 
             $masukRecord = $studentAttendance->first(function ($att) {
                 return $att->tipe_presensi === 'gerbang_masuk' || $att->tipe_presensi === 'mapel';
@@ -455,6 +456,8 @@ class SatpamApiController extends Controller
             'success' => true,
             'message' => 'Rekap harian berhasil dimuat.',
             'data' => [
+                'selected_date' => $selectedDate,
+                'formatted_date' => Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y'),
                 'total_students' => $rekapList->count(),
                 'hadir_count' => $rekapList->whereIn('status', ['hadir', 'terlambat', 'sudah_pulang'])->count(),
                 'belum_hadir_count' => $rekapList->where('status', 'belum_hadir')->count(),
@@ -462,6 +465,159 @@ class SatpamApiController extends Controller
                 'students' => $rekapList->values(),
             ],
         ]);
+    }
+
+    /**
+     * Ekspor Rekap Presensi Gerbang Satpam ke Excel (.CSV UTF-8) via API
+     * GET /api/satpam/rekap/export-excel
+     */
+    public function exportRekapExcel(Request $request)
+    {
+        $selectedDate = $request->query('date') ?? $request->query('tanggal') ?? Carbon::today('Asia/Jayapura')->format('Y-m-d');
+        $targetDate = Carbon::parse($selectedDate, 'Asia/Jayapura')->startOfDay();
+        $kelasId = $request->query('kelas_id');
+        $search = $request->query('search');
+
+        $query = Siswa::with(['user', 'kelas']);
+        if ($kelasId) {
+            $query->where('kelas_id', $kelasId);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nisn', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($qu) use ($search) {
+                        $qu->where('name', 'like', "%{$search}%")->orWhere('nis', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $students = $query->orderBy('kelas_id', 'asc')->get();
+        $attendance = Absensi::whereDate('waktu_scan', $targetDate)->get()->groupBy('siswa_id');
+
+        $filename = "Rekap_Presensi_Gerbang_{$selectedDate}.csv";
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ];
+
+        $callback = function () use ($students, $attendance, $selectedDate) {
+            $file = fopen('php://output', 'w');
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
+
+            fputcsv($file, ['LAPORAN REKAPITULASI PRESENSI GERBANG SEKOLAH']);
+            fputcsv($file, ['SMA NEGERI 5 KABUPATEN PULAU MOROTAI']);
+            fputcsv($file, ['Tanggal', Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y')]);
+            fputcsv($file, []);
+
+            fputcsv($file, ['No', 'Nama Siswa', 'NIS / NISN', 'Kelas', 'Jam Masuk', 'Jam Pulang', 'Status Kehadiran']);
+
+            $no = 1;
+            foreach ($students as $s) {
+                $records = $attendance->get($s->id, collect());
+                $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
+                $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
+
+                $statusLabel = 'Belum Hadir';
+                if ($pulang) $statusLabel = 'Sudah Pulang';
+                elseif ($masuk) {
+                    $statusLabel = $masuk->status === 'terlambat' ? 'Terlambat' : 'Hadir Tepat Waktu';
+                }
+
+                fputcsv($file, [
+                    $no++,
+                    $s->user->name ?? '-',
+                    $s->nisn ?? $s->user->nis ?? '-',
+                    $s->kelas->nama_kelas ?? '-',
+                    $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') . ' WIT' : '-',
+                    $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') . ' WIT' : '-',
+                    $statusLabel,
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Ekspor Rekap Presensi Gerbang Satpam ke PDF / Printable View via API
+     * GET /api/satpam/rekap/export-pdf
+     */
+    public function exportRekapPdf(Request $request)
+    {
+        $selectedDate = $request->query('date') ?? $request->query('tanggal') ?? Carbon::today('Asia/Jayapura')->format('Y-m-d');
+        $targetDate = Carbon::parse($selectedDate, 'Asia/Jayapura')->startOfDay();
+        $kelasId = $request->query('kelas_id');
+        $search = $request->query('search');
+
+        $query = Siswa::with(['user', 'kelas']);
+        if ($kelasId) {
+            $query->where('kelas_id', $kelasId);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nisn', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($qu) use ($search) {
+                        $qu->where('name', 'like', "%{$search}%")->orWhere('nis', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $students = $query->orderBy('kelas_id', 'asc')->get();
+        $attendance = Absensi::whereDate('waktu_scan', $targetDate)->get()->groupBy('siswa_id');
+
+        $hadirCount = 0;
+        $terlambatCount = 0;
+        $pulangCount = 0;
+        $belumHadirCount = 0;
+
+        $rows = [];
+        $no = 1;
+        foreach ($students as $s) {
+            $records = $attendance->get($s->id, collect());
+            $masuk = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_masuk' || $a->tipe_presensi === 'mapel');
+            $pulang = $records->first(fn($a) => $a->tipe_presensi === 'gerbang_pulang');
+
+            $statusText = 'BELUM HADIR';
+            if ($pulang) {
+                $statusText = 'SUDAH PULANG';
+                $pulangCount++;
+            } elseif ($masuk) {
+                if ($masuk->status === 'terlambat') {
+                    $statusText = 'TERLAMBAT';
+                    $terlambatCount++;
+                } else {
+                    $statusText = 'HADIR';
+                    $hadirCount++;
+                }
+            } else {
+                $belumHadirCount++;
+            }
+
+            $rows[] = [
+                'no' => $no++,
+                'name' => $s->user->name ?? '-',
+                'nisn' => $s->nisn ?? $s->user->nis ?? '-',
+                'kelas' => $s->kelas->nama_kelas ?? '-',
+                'jam_masuk' => $masuk ? Carbon::parse($masuk->waktu_scan)->format('H:i') . ' WIT' : '-',
+                'jam_pulang' => $pulang ? Carbon::parse($pulang->waktu_scan)->format('H:i') . ' WIT' : '-',
+                'status' => $statusText,
+            ];
+        }
+
+        $totalSiswa = count($students);
+        $formattedDate = Carbon::parse($selectedDate)->locale('id')->isoFormat('dddd, D MMMM Y');
+        $officerName = auth()->user()->name ?? 'Petugas Satpam';
+
+        $html = view('satpam.print_rekap', compact(
+            'rows', 'totalSiswa', 'hadirCount', 'terlambatCount', 'pulangCount', 'belumHadirCount', 'formattedDate', 'officerName'
+        ))->render();
+
+        return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
     }
 
     /**

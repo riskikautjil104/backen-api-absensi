@@ -506,13 +506,14 @@ class SiswaApiController extends Controller
     }
 
     /**
-     * Siswa Memindai QRIS Gerbang yang Ditampilkan oleh Satpam
+     * Siswa Memindai QRIS Gerbang yang Ditampilkan oleh Satpam (Masuk & Pulang)
      * POST /api/siswa/absensi/scan-gerbang
      */
     public function scanGerbangQr(Request $request)
     {
         $request->validate([
             'qr_payload' => 'required|string',
+            'tipe_presensi' => 'nullable|in:masuk,pulang,auto',
             'latitude' => 'nullable|string',
             'longitude' => 'nullable|string',
         ]);
@@ -554,22 +555,57 @@ class SiswaApiController extends Controller
             ], 400);
         }
 
-        // Cek apakah sudah absen gerbang hari ini
-        $existing = Absensi::where('siswa_id', $siswa->id)
+        $existingMasuk = Absensi::where('siswa_id', $siswa->id)
             ->whereDate('waktu_scan', $today)
             ->where('tipe_presensi', 'gerbang_masuk')
             ->first();
 
-        if ($existing) {
+        $existingPulang = Absensi::where('siswa_id', $siswa->id)
+            ->whereDate('waktu_scan', $today)
+            ->where('tipe_presensi', 'gerbang_pulang')
+            ->first();
+
+        $tipeRequest = $request->tipe_presensi ?? 'auto';
+        $tipeTarget = 'gerbang_masuk';
+
+        if ($tipeRequest === 'pulang') {
+            $tipeTarget = 'gerbang_pulang';
+        } elseif ($tipeRequest === 'masuk') {
+            $tipeTarget = 'gerbang_masuk';
+        } else {
+            // Auto detection: Jika belum masuk, maka masuk. Jika sudah masuk tapi belum pulang, maka pulang.
+            if (!$existingMasuk) {
+                $tipeTarget = 'gerbang_masuk';
+            } elseif (!$existingPulang) {
+                $tipeTarget = 'gerbang_pulang';
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda sudah menyelesaikan presensi masuk (pukul ' . Carbon::parse($existingMasuk->waktu_scan)->format('H:i') . ' WIT) dan pulang (pukul ' . Carbon::parse($existingPulang->waktu_scan)->format('H:i') . ' WIT) hari ini.',
+                ], 409);
+            }
+        }
+
+        if ($tipeTarget === 'gerbang_masuk' && $existingMasuk) {
             return response()->json([
                 'success' => false,
-                'message' => 'Anda sudah melakukan presensi masuk gerbang hari ini pada pukul ' . Carbon::parse($existing->waktu_scan)->format('H:i') . ' WIT.',
+                'message' => 'Anda sudah melakukan presensi masuk gerbang hari ini pada pukul ' . Carbon::parse($existingMasuk->waktu_scan)->format('H:i') . ' WIT.',
             ], 409);
         }
 
-        // Hitung status tepat waktu / terlambat
-        $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour(7)->setMinute(30)->setSecond(0);
-        $status = $now->isAfter($jamMasukLimit) ? 'terlambat' : 'hadir';
+        if ($tipeTarget === 'gerbang_pulang' && $existingPulang) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda sudah melakukan presensi pulang gerbang hari ini pada pukul ' . Carbon::parse($existingPulang->waktu_scan)->format('H:i') . ' WIT.',
+            ], 409);
+        }
+
+        // Hitung status
+        $status = 'hadir';
+        if ($tipeTarget === 'gerbang_masuk') {
+            $jamMasukLimit = Carbon::today('Asia/Jayapura')->setHour(7)->setMinute(30)->setSecond(0);
+            $status = $now->isAfter($jamMasukLimit) ? 'terlambat' : 'hadir';
+        }
 
         $petugasId = $data['petugas_id'] ?? null;
         $petugasName = $data['petugas_name'] ?? 'Petugas Gerbang';
@@ -577,24 +613,33 @@ class SiswaApiController extends Controller
         $absensi = Absensi::create([
             'siswa_id' => $siswa->id,
             'jadwal_id' => null,
-            'tipe_presensi' => 'gerbang_masuk',
+            'tipe_presensi' => $tipeTarget,
             'petugas_id' => $petugasId,
             'waktu_scan' => $now,
             'status' => $status,
-            'keterangan' => "Presensi Gerbang via QRIS ({$petugasName})",
+            'keterangan' => $tipeTarget === 'gerbang_pulang' 
+                ? "Presensi Pulang Sekolah via QRIS ({$petugasName})" 
+                : "Presensi Gerbang Masuk via QRIS ({$petugasName})",
             'metode_scan' => 'qris_gerbang',
             'latitude' => $request->latitude,
             'longitude' => $request->longitude,
         ]);
 
+        $pesanSukses = $tipeTarget === 'gerbang_pulang'
+            ? 'Presensi pulang sekolah berhasil dicatat! Selamat beristirahat dan hati-hati di jalan.'
+            : 'Presensi masuk gerbang sekolah berhasil dicatat!';
+
         return response()->json([
             'success' => true,
-            'message' => 'Presensi gerbang sekolah berhasil dicatat!',
+            'message' => $pesanSukses,
             'data' => [
+                'tipe_presensi' => $tipeTarget,
                 'status' => $status,
                 'time' => $now->format('H:i:s') . ' WIT',
                 'petugas' => $petugasName,
-                'keterangan' => $status === 'terlambat' ? '⚠️ Tercatat Terlambat' : '✅ Hadir Tepat Waktu',
+                'keterangan' => $tipeTarget === 'gerbang_pulang' 
+                    ? '🏠 Presensi Pulang Tercatat' 
+                    : ($status === 'terlambat' ? '⚠️ Tercatat Terlambat' : '✅ Hadir Tepat Waktu'),
             ],
         ]);
     }

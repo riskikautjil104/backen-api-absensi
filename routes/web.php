@@ -64,10 +64,12 @@ Route::middleware(['auth', 'role:siswa'])->prefix('siswa')->name('siswa.')->grou
 
 // awal batas suci yang kamu ubah
 // Satpam Routes
-Route::middleware(['auth', 'role:satpam'])->prefix('satpam')->name('satpam.')->group(function () {
+Route::middleware(['auth', 'role:satpam,admin'])->prefix('satpam')->name('satpam.')->group(function () {
     Route::get('/dashboard', [App\Http\Controllers\Satpam\DashboardController::class, 'index'])->name('dashboard');
     Route::match(['get', 'post'], '/scan', [App\Http\Controllers\Satpam\ScanController::class, 'scan'])->name('scan');
     Route::get('/rekap', [App\Http\Controllers\Satpam\RekapController::class, 'index'])->name('rekap');
+    Route::get('/rekap/export-excel', [App\Http\Controllers\Satpam\RekapController::class, 'exportExcel'])->name('rekap.excel');
+    Route::get('/rekap/export-pdf', [App\Http\Controllers\Satpam\RekapController::class, 'exportPdf'])->name('rekap.pdf');
 });
 // akhir batas suci yang kamu ubah
 
