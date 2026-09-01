@@ -5,6 +5,15 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>SMA Negeri 5 Pulau Morotai</title>
+
+        <!-- Favicon -->
+        <link rel="icon" type="image/png" href="{{ asset('favicon/favicon-96x96.png') }}" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="{{ asset('favicon/favicon.svg') }}" />
+        <link rel="shortcut icon" href="{{ asset('favicon/favicon.ico') }}" />
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('favicon/apple-touch-icon.png') }}" />
+        <meta name="apple-mobile-web-app-title" content="SMAN 5 Morotai" />
+        <link rel="manifest" href="{{ asset('favicon/site.webmanifest') }}" />
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,7 +31,8 @@
     <body class="bg-white text-apple-ink font-sans antialiased">
         <!-- Global Nav -->
         <nav class="bg-black text-white h-[44px] flex items-center px-4 justify-between fixed w-full top-0 z-[100]">
-            <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-3">
+                <img src="{{ asset('favicon/favicon-96x96.png') }}" alt="Logo SMAN 5 Morotai" class="w-6 h-6 rounded-md object-contain">
                 <span class="font-display font-semibold tracking-tightest">SMA 5 MOROTAI</span>
             </div>
             <div class="flex items-center space-x-6 text-[12px] font-light">

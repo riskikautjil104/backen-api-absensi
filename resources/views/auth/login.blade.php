@@ -2,6 +2,9 @@
     <div class="min-h-screen flex flex-col items-center justify-center p-4">
         <div class="w-full max-w-[400px] space-y-8">
             <div class="text-center">
+                <a href="/" class="inline-flex justify-center mb-4 transition-transform hover:scale-105 duration-200">
+                    <img src="{{ asset('favicon/favicon-96x96.png') }}" alt="Logo SMAN 5 Morotai" class="w-16 h-16 rounded-2xl object-contain shadow-sm">
+                </a>
                 <h2 class="text-[32px] font-semibold tracking-tightest">Masuk ke SMA 5.</h2>
                 <p class="text-apple-gray-muted-48 mt-2">Gunakan akun Anda untuk mengakses sistem.</p>
             </div>

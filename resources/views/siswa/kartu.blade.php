@@ -21,8 +21,8 @@
                 
                 <div class="flex justify-between items-start mb-4">
                     <div class="flex items-center space-x-2">
-                        <div class="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-                            <span class="text-apple-blue text-[10px] font-bold">5</span>
+                        <div class="w-8 h-8 bg-white rounded-full flex items-center justify-center p-0.5 overflow-hidden shadow-sm">
+                            <img src="{{ asset('favicon/favicon-96x96.png') }}" alt="Logo SMAN 5 Morotai" class="w-full h-full object-contain">
                         </div>
                         <span class="text-[10px] font-bold tracking-widest">SMAN 5 MOROTAI</span>
                     </div>

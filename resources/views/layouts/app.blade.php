@@ -7,6 +7,14 @@
 
         <title>{{ config('app.name', 'SMA 5 Morotai') }}</title>
 
+        <!-- Favicon -->
+        <link rel="icon" type="image/png" href="{{ asset('favicon/favicon-96x96.png') }}" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="{{ asset('favicon/favicon.svg') }}" />
+        <link rel="shortcut icon" href="{{ asset('favicon/favicon.ico') }}" />
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('favicon/apple-touch-icon.png') }}" />
+        <meta name="apple-mobile-web-app-title" content="SMAN 5 Morotai" />
+        <link rel="manifest" href="{{ asset('favicon/site.webmanifest') }}" />
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,7 +30,7 @@
             <aside class="hidden lg:flex w-64 flex-col bg-apple-canvas border-r border-black/5 fixed h-full z-50">
                 <div class="p-6 border-b border-black/5">
                     <a href="/" class="flex items-center space-x-3">
-                        <div class="w-8 h-8 bg-apple-blue rounded-lg flex items-center justify-center text-white font-bold">5</div>
+                        <img src="{{ asset('favicon/favicon-96x96.png') }}" alt="Logo SMAN 5 Morotai" class="w-8 h-8 rounded-lg object-contain">
                         <span class="font-bold tracking-tightest">SMAN 5 MOROTAI</span>
                     </a>
                 </div>
